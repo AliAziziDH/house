@@ -1,0 +1,17 @@
+
+data/
+processed_data/
+*.csv
+*.pkl
+
+
+__pycache__/
+*.pyc
+
+
+.venv/
+
+
+catboost_info/
+
+
