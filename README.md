@@ -270,7 +270,7 @@ Despite a reasonable CV score, the stacking model performed worse on the public 
 | XGBoost (alone) | 0.12335 | ~650 |
 | CatBoost (alone) | 0.12341 | ~660 |
 | LightGBM (alone) | 0.12772 | ~1,200 |
-| **Weighted Ensemble (0.64 / 0.36)** | **0.12123** | **520** |
+| **Weighted Ensemble (0.64 / 0.36)** | **0.12123** | **513** |
 | Stacking (Linear Regression) | 0.12870 | ~1,500+ |
 
 **Final Model:** Weighted Ensemble (XGBoost 64% + CatBoost 36%)
