@@ -11,7 +11,7 @@ This repository contains my complete solution for the **House Prices - Advanced 
 
 **Key Results:**
 - **Public Leaderboard Score:** 0.12123
-- **Final Rank:** 520 / 4,155 (Top 12.5%)
+- **Final Rank** | **513 / 4,155** (Top 12.3%) |
 - **Best Model:** Weighted Ensemble (XGBoost 64% + CatBoost 36%)
 - **Target Transformation:** Box-Cox
 
