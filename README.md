@@ -265,13 +265,19 @@ Despite a reasonable CV score, the stacking model performed worse on the public 
 
 ### 3. Final Model Selection
 
-| Model / Ensemble | Public LB Score | Rank (out of 4,155) |
-| :--- | :--- | :--- |
-| XGBoost (alone) | 0.12335 | ~650 |
-| CatBoost (alone) | 0.12341 | ~660 |
-| LightGBM (alone) | 0.12772 | ~1,200 |
-| **Weighted Ensemble (0.64 / 0.36)** | **0.12123** | **513** |
-| Stacking (Linear Regression) | 0.12870 | ~1,500+ |
+## Results
+
+| Model | Public LB Score |
+|:---|:---|
+| **Weighted Ensemble (XGB 0.64 + Cat 0.36)** | **0.12123** |
+| XGBoost (RMSLE) | 0.12738 (CV) |
+| CatBoost (RMSLE) | 0.121296 (CV) |
+| CatBoost (RMSLE) on Public LB | 0.12486 |
+| Ensemble (0.14 XGB + 0.86 Cat) on Public LB | 0.12409 |
+
+**Best Submission:** `submission_ensemble_final.csv`  
+**Public LB Score:** **0.12123**  
+**Final Rank:** **513 / 4,155** (Top 12.3%)
 
 **Final Model:** Weighted Ensemble (XGBoost 64% + CatBoost 36%)
 
