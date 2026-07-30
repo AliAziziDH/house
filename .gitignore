@@ -1,18 +1,27 @@
-
+# Models and data (too large for git)
+*.pkl
+*.csv
+*.db
 data/
 processed_data/
-*.csv
-*.pkl
+# Ignore everything in models/ except .gitkeep
+models/*
+!models/.gitkeep
 
+# Ignore everything in submissions/ except .gitkeep
+submissions/*
+!submissions/.gitkeep
 
+# Python cache
 __pycache__/
 *.pyc
+*.pyo
 
-
+# Virtual environment
 .venv/
+venv/
 
-
-catboost_info/
-
-
-.DS_Store
+# IDE
+.vscode/
+.idea/
+*.swp
