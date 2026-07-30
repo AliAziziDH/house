@@ -24,4 +24,4 @@ venv/
 # IDE
 .vscode/
 .idea/
-*.swp
+*.swp.DS_Store
