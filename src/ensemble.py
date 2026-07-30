@@ -47,10 +47,9 @@ print("\n" + "=" * 60)
 print("ENSEMBLE: WEIGHTED AVERAGE")
 print("=" * 60)
 
-# Weights based on performance (higher weight = better model)
-# XGBoost has the best LB score, so we give it more weight
-weight_xgb = 0.65
-weight_catboost = 0.35
+# Best weights from optimization (aligned with README)
+weight_xgb = 0.64
+weight_catboost = 0.36
 
 # Calculate weighted average
 ensemble_pred = (weight_xgb * xgb_pred_original + 
@@ -70,8 +69,8 @@ submission = pd.DataFrame({
     'SalePrice': ensemble_pred
 })
 
-submission.to_csv('submission_ensemble.csv', index=False)
-print("✅ Submission file saved as 'submission_ensemble.csv'")
+submission.to_csv('submission_ensemble_final.csv', index=False)
+print("✅ Submission file saved as 'submission_ensemble_final.csv'")
 print(f"   Shape: {submission.shape}")
 print(f"   First 5 rows:")
 print(submission.head())
