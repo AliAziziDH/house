@@ -93,6 +93,9 @@ print("CREATING SUBMISSION FILES")
 print("=" * 60)
 
 # 1. CatBoost only
+import os
+os.makedirs('./submissions', exist_ok=True)
+
 submission_cat = pd.DataFrame({'Id': test_ids, 'SalePrice': cat_pred})
 submission_cat.to_csv('./submissions/submission_catboost_final.csv', index=False)
 print("✅ CatBoost submission saved to ./submissions/submission_catboost_final.csv")

@@ -1,1 +1,2 @@
-python run.py --step all
+
+python run.py --step allٓ

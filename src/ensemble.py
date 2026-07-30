@@ -15,8 +15,9 @@ X_test = pd.read_csv('./processed_data/X_test.csv')
 test_ids = pd.read_csv('./data/test.csv')['Id']
 
 # Load trained models (we only use the best ones)
-xgb_model = joblib.load('./models/xgboost_best.pkl')
-catboost_model = joblib.load('./models/catboost_best.pkl')
+xgb_model = joblib.load('./models/xgboost_best_rmsle.pkl')
+catboost_model = joblib.load('./models/catboost_best_rmsle.pkl')
+pt = joblib.load('./models/boxcox_transformer.pkl')
 
 # Load the transformer (Box-Cox)
 pt = joblib.load('./models/boxcox_transformer.pkl')
@@ -68,6 +69,10 @@ submission = pd.DataFrame({
     'Id': test_ids,
     'SalePrice': ensemble_pred
 })
+
+import os  
+
+os.makedirs('./submissions', exist_ok=True)
 
 submission.to_csv('submission_ensemble_final.csv', index=False)
 print("✅ Submission file saved as 'submission_ensemble_final.csv'")

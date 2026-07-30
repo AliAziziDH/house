@@ -96,12 +96,25 @@ print("✅ Optional features handled.")
 # ============================================
 # 5. FEW MISSING VALUES
 # ============================================
+# Compute median LotFrontage per neighborhood from training data
+neighborhood_median = X_train.groupby('Neighborhood')['LotFrontage'].median()
+global_median = X_train['LotFrontage'].median()
+
+# Apply to training data
 X_train['LotFrontage'] = X_train.groupby('Neighborhood')['LotFrontage'].transform(
     lambda x: x.fillna(x.median())
 )
-X_test['LotFrontage'] = X_test.groupby('Neighborhood')['LotFrontage'].transform(
-    lambda x: x.fillna(x.median())
+
+# Apply to test data using training-derived medians
+X_test['LotFrontage'] = X_test.apply(
+    lambda row: neighborhood_median.get(row['Neighborhood'], global_median)
+    if pd.isna(row['LotFrontage']) else row['LotFrontage'],
+    axis=1
 )
+
+# Fallback: if any NaN still remain, fill with global median
+X_train['LotFrontage'] = X_train['LotFrontage'].fillna(global_median)
+X_test['LotFrontage'] = X_test['LotFrontage'].fillna(global_median)
 
 most_frequent_electrical = X_train['Electrical'].mode()[0]
 X_train['Electrical'] = X_train['Electrical'].fillna(most_frequent_electrical)
@@ -250,4 +263,4 @@ print("✅ Processed data saved successfully.")
 print(f"   X_train: {X_train.shape}")
 print(f"   X_test: {X_test.shape}")
 print(f"   y_train: {y_train.shape}")
-print("\n✅ Preprocessing completed successfully.")
+print("\n✅ Preprocessing completed successfully.")# test comment

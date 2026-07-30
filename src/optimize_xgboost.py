@@ -133,7 +133,8 @@ print("SAVING RESULTS")
 print("=" * 60)
 
 best_params = study.best_params
-best_model = XGBRegressor(**best_params, random_state=RANDOM_STATE, verbosity=0)
+best_params_no_rs = {k: v for k, v in best_params.items() if k != 'random_state'}
+best_model = XGBRegressor(**best_params_no_rs, random_state=RANDOM_STATE, verbosity=0)
 best_model.fit(X_train, y_transformed)
 
 # Save model and transformer
@@ -166,6 +167,9 @@ submission = pd.DataFrame({
     'Id': test_ids,
     'SalePrice': y_pred_original
 })
+import os
+os.makedirs('./submissions', exist_ok=True)
+
 submission.to_csv('./submissions/submission_xgboost_rmsle.csv', index=False)
 
 print("✅ Submission saved to './submissions/submission_xgboost_rmsle.csv'")

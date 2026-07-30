@@ -239,6 +239,59 @@ The simplest and most effective ensemble method is to take a weighted average of
 
 This improved the score from **0.12335** (XGBoost alone) to **0.12123** — a reduction of ~1.7% in RMSLE.
 
+**Ensemble Weights Clarification**
+
+Two distinct weightings were used in the project and recorded in the repository: one that gave the best public leaderboard submission, and one that was found to be optimal on out‑of‑fold (OOF) predictions during internal validation.
+
+- Public leaderboard (final submission used for Kaggle LB): **XGBoost 64% + CatBoost 36%** (reported public LB score: 0.12123).
+- OOF-optimal weights (found via OOF grid search): **XGBoost 14% + CatBoost 86%** (OOF RMSLE: 0.123800).
+
+Both sets of weights and their generated submission files are stored in the `submissions/` folder for comparison; see the `Reproducibility` section below for the exact commands to reproduce either submission.
+
+**Reproducibility**
+
+Before running the commands below, download the Kaggle competition files `train.csv` and `test.csv` and place them in the `data/` directory (create `data/` if it does not exist).
+
+To reproduce preprocessing, model training, and final submissions locally run the following commands from the repository root (assumes Python virtualenv activated and dependencies installed):
+
+1. Preprocess and save processed data:
+
+```bash
+python src/preprocess.py
+```
+
+2. Optimize and train XGBoost (Optuna, RMSLE):
+
+```bash
+python src/optimize_xgboost.py
+```
+
+3. Optimize and train CatBoost on raw data (Optuna, RMSLE):
+
+```bash
+python src/train_catboost.py
+```
+
+4. Find ensemble weights (OOF grid search) and generate the OOF-optimal submission:
+
+```bash
+python src/find_ensemble_weights.py
+```
+
+5. Generate final submissions from trained models (two weight variants):
+
+```bash
+# (a) Leaderboard weights: XGB 0.64, CAT 0.36
+python src/make_final_submission.py
+
+# (b) OOF-optimal weights: XGB 0.14, CAT 0.86
+python -c "from pathlib import Path; import joblib, pandas as pd; X_test=pd.read_csv('processed_data/X_test.csv'); x=joblib.load('models/xgboost_best_rmsle.pkl'); c=joblib.load('models/catboost_best_rmsle.pkl'); pt=joblib.load('models/boxcox_transformer.pkl'); x_o=pt.inverse_transform(x.predict(X_test).reshape(-1,1)).flatten(); c_o=pt.inverse_transform(c.predict(X_test).reshape(-1,1)).flatten(); import os; os.makedirs('submissions',exist_ok=True); pd.DataFrame({'Id':pd.read_csv('data/test.csv')['Id'],'SalePrice':0.14*x_o+0.86*c_o}).to_csv('submissions/submission_ensemble_0.14_0.86.csv',index=False)"
+```
+
+Notes:
+- The repository contains both the scripts that produced the leaderboard submission and the experiments that found the OOF-optimal weights; these were intentionally preserved for transparency and comparison.
+- See `experiments/README.md` for which experiment files are canonical and which ones are archived.
+
 > **Note:** LightGBM was excluded from the final ensemble because it consistently underperformed on the public LB despite reasonable CV scores.
 
 ### 2. Stacking (Meta‑Model)
