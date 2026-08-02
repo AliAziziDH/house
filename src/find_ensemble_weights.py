@@ -48,29 +48,66 @@ print(f"X_train shape: {X_train.shape}")
 print(f"X_train_raw shape: {X_train_raw.shape}")
 print(f"y_train_log shape: {y_train_log.shape}")
 
-# ============================================
-# LOAD BEST PARAMETERS FROM OPTUNA STUDIES
-# ============================================
-print("\n" + "=" * 60)
-print("LOADING OPTIMAL HYPERPARAMETERS")
-print("=" * 60)
+# Default optimal parameters in case Optuna sqlite databases do not exist locally
+DEFAULT_XGB_PARAMS = {
+    'max_depth': 5,
+    'learning_rate': 0.010110231750868986,
+    'subsample': 0.5034728283142227,
+    'colsample_bytree': 0.504544868823299,
+    'min_child_weight': 2,
+    'gamma': 0.0018151575742466645,
+    'reg_alpha': 0.01606690038615389,
+    'reg_lambda': 0.019342719287003877
+}
 
-xgb_study = optuna.load_study(
-    study_name='xgboost_optimization_log_target',
-    storage=f'sqlite:///{os.path.abspath("./experiments/xgboost_study_log.db")}'
-)
-lgb_study = optuna.load_study(
-    study_name='lightgbm_optimization_log_target',
-    storage=f'sqlite:///{os.path.abspath("./experiments/lightgbm_study_log.db")}'
-)
-cat_study = optuna.load_study(
-    study_name='catboost_optimization_log_target',
-    storage=f'sqlite:///{os.path.abspath("./experiments/catboost_study_log.db")}'
-)
+DEFAULT_LGB_PARAMS = {
+    'max_depth': 4,
+    'num_leaves': 63,
+    'learning_rate': 0.021194390248830346,
+    'subsample': 0.6126066923442381,
+    'colsample_bytree': 0.40036174914879236,
+    'min_child_samples': 16,
+    'reg_alpha': 9.381553163911187e-06,
+    'reg_lambda': 1.7472249548155823e-06
+}
 
-best_params_xgb = xgb_study.best_params
-best_params_lgb = lgb_study.best_params
-best_params_cat = cat_study.best_params
+DEFAULT_CAT_PARAMS = {
+    'depth': 4,
+    'learning_rate': 0.020978632623778505,
+    'l2_leaf_reg': 0.012607414383039797,
+    'subsample': 0.6441998268583774,
+    'random_strength': 2.4414129060841185
+}
+
+try:
+    xgb_study = optuna.load_study(
+        study_name='xgboost_optimization_log_target',
+        storage=f'sqlite:///{os.path.abspath("./experiments/xgboost_study_log.db")}'
+    )
+    best_params_xgb = xgb_study.best_params
+except Exception:
+    print("⚠️ Optuna database for XGBoost not found. Falling back to default tuned parameters.")
+    best_params_xgb = DEFAULT_XGB_PARAMS
+
+try:
+    lgb_study = optuna.load_study(
+        study_name='lightgbm_optimization_log_target',
+        storage=f'sqlite:///{os.path.abspath("./experiments/lightgbm_study_log.db")}'
+    )
+    best_params_lgb = lgb_study.best_params
+except Exception:
+    print("⚠️ Optuna database for LightGBM not found. Falling back to default tuned parameters.")
+    best_params_lgb = DEFAULT_LGB_PARAMS
+
+try:
+    cat_study = optuna.load_study(
+        study_name='catboost_optimization_log_target',
+        storage=f'sqlite:///{os.path.abspath("./experiments/catboost_study_log.db")}'
+    )
+    best_params_cat = cat_study.best_params
+except Exception:
+    print("⚠️ Optuna database for CatBoost not found. Falling back to default tuned parameters.")
+    best_params_cat = DEFAULT_CAT_PARAMS
 
 print("✅ XGBoost Best Params:", best_params_xgb)
 print("✅ LightGBM Best Params:", best_params_lgb)
