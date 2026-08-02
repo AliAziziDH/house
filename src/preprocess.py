@@ -1,8 +1,7 @@
 import pandas as pd
 import numpy as np
 import os
-from sklearn.preprocessing import PowerTransformer
-from sklearn.model_selection import train_test_split
+from scipy.stats import skew
 
 # ============================================
 # LOAD RAW DATA
@@ -14,13 +13,27 @@ print("=" * 60)
 train = pd.read_csv('./data/train.csv')
 test = pd.read_csv('./data/test.csv')
 
-print(f"Train shape: {train.shape}")
-print(f"Test shape: {test.shape}")
+print(f"Initial Train shape: {train.shape}")
+print(f"Initial Test shape: {test.shape}")
+
+# ============================================
+# 0. REMOVE OUTLIERS
+# ============================================
+print("\n" + "=" * 60)
+print("REMOVING OUTLIERS")
+print("=" * 60)
+# Dataset documentation recommends removing homes with GrLivArea > 4000 sq ft and SalePrice < $300,000
+outliers = train[(train['GrLivArea'] > 4000) & (train['SalePrice'] < 300000)].index
+print(f"Removing outlier indices: {list(outliers)} (Id: {list(train.loc[outliers, 'Id'])})")
+train = train.drop(outliers).reset_index(drop=True)
+print(f"Train shape after outlier removal: {train.shape}")
 
 # ============================================
 # SEPARATE FEATURES AND TARGET
 # ============================================
 y_train = train['SalePrice']
+y_train_log = np.log1p(y_train)
+
 X_train = train.drop(['Id', 'SalePrice'], axis=1)
 X_test = test.drop(['Id'], axis=1)
 
@@ -96,23 +109,17 @@ print("✅ Optional features handled.")
 # ============================================
 # 5. FEW MISSING VALUES
 # ============================================
-# Compute median LotFrontage per neighborhood from training data
 neighborhood_median = X_train.groupby('Neighborhood')['LotFrontage'].median()
 global_median = X_train['LotFrontage'].median()
 
-# Apply to training data
 X_train['LotFrontage'] = X_train.groupby('Neighborhood')['LotFrontage'].transform(
     lambda x: x.fillna(x.median())
 )
-
-# Apply to test data using training-derived medians
 X_test['LotFrontage'] = X_test.apply(
     lambda row: neighborhood_median.get(row['Neighborhood'], global_median)
     if pd.isna(row['LotFrontage']) else row['LotFrontage'],
     axis=1
 )
-
-# Fallback: if any NaN still remain, fill with global median
 X_train['LotFrontage'] = X_train['LotFrontage'].fillna(global_median)
 X_test['LotFrontage'] = X_test['LotFrontage'].fillna(global_median)
 
@@ -172,10 +179,36 @@ X_train['GarageAge'] = np.where(X_train['GarageYrBlt'] == 0, 0, X_train['YrSold'
 X_test['GarageAge'] = np.where(X_test['GarageYrBlt'] == 0, 0, X_test['YrSold'] - X_test['GarageYrBlt'])
 
 print("✅ Feature engineering completed.")
-print(f"   New features added: TotalSF, TotalPorchSF, TotalBathrooms, HouseAge, RemodAge, IsNew, QualityScore, GarageAge")
 
 # ============================================
-# 8. ORDINAL ENCODING
+# 8. LOG TRANSFORMATION OF SKEWED NUMERICAL FEATURES
+# ============================================
+print("\n" + "=" * 60)
+print("LOG TRANSFORMING SKEWED NUMERICAL FEATURES")
+print("=" * 60)
+
+numeric_cols = X_train.select_dtypes(include=['int64', 'float64']).columns
+exclude_from_log = ['YrSold', 'MoSold', 'YearBuilt', 'YearRemodAdd', 'GarageYrBlt', 'IsNew']
+num_cols_to_transform = [c for c in numeric_cols if c not in exclude_from_log]
+
+skewness = X_train[num_cols_to_transform].apply(lambda x: skew(x.dropna()))
+high_skew_cols = skewness[abs(skewness) > 0.75].index.tolist()
+
+print(f"Found {len(high_skew_cols)} continuous features with absolute skewness > 0.75:")
+print(high_skew_cols)
+
+for col in high_skew_cols:
+    X_train[col] = np.log1p(X_train[col])
+    X_test[col] = np.log1p(X_test[col])
+
+print("✅ Skewed continuous numerical features transformed with np.log1p.")
+
+# Save RAW dataset for CatBoost (before Ordinal & One-Hot Encoding)
+X_train_raw = X_train.copy()
+X_test_raw = X_test.copy()
+
+# ============================================
+# 9. ORDINAL ENCODING
 # ============================================
 print("\n" + "=" * 60)
 print("APPLYING ORDINAL ENCODING")
@@ -212,10 +245,6 @@ ordinal_mappings = {
     'LandSlope': land_slope_map,
 }
 
-# Save raw data for CatBoost
-X_train_raw = X_train.copy()
-X_test_raw = X_test.copy()
-
 for col, mapping in ordinal_mappings.items():
     if col in X_train.columns:
         X_train[col] = X_train[col].map(mapping).fillna(0)
@@ -224,7 +253,7 @@ for col, mapping in ordinal_mappings.items():
 print("✅ Ordinal encoding completed.")
 
 # ============================================
-# 9. ONE-HOT ENCODING
+# 10. ONE-HOT ENCODING
 # ============================================
 print("\n" + "=" * 60)
 print("APPLYING ONE-HOT ENCODING")
@@ -243,7 +272,7 @@ print(f"   Final number of features after one-hot encoding: {X_train.shape[1]}")
 print("✅ One-hot encoding completed.")
 
 # ============================================
-# 10. SAVE PROCESSED DATA
+# 11. SAVE PROCESSED DATA
 # ============================================
 print("\n" + "=" * 60)
 print("SAVING PROCESSED DATA")
@@ -254,6 +283,7 @@ os.makedirs('./processed_data', exist_ok=True)
 X_train.to_csv('./processed_data/X_train.csv', index=False)
 X_test.to_csv('./processed_data/X_test.csv', index=False)
 y_train.to_csv('./processed_data/y_train.csv', index=False)
+y_train_log.to_csv('./processed_data/y_train_log.csv', index=False)
 
 # Save raw data for CatBoost
 X_train_raw.to_csv('./processed_data/X_train_raw.csv', index=False)
@@ -263,4 +293,5 @@ print("✅ Processed data saved successfully.")
 print(f"   X_train: {X_train.shape}")
 print(f"   X_test: {X_test.shape}")
 print(f"   y_train: {y_train.shape}")
-print("\n✅ Preprocessing completed successfully.")# test comment
+print(f"   y_train_log: {y_train_log.shape}")
+print("\n✅ Preprocessing completed successfully.")

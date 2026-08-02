@@ -1,120 +1,89 @@
 """
-CatBoost Optimization with Optuna (on Raw Data)
-Uses RMSLE (Root Mean Squared Log Error) as the evaluation metric.
-This version uses raw data with categorical features for CatBoost.
+CatBoost Optimization with Optuna (Native Categoricals & Early Stopping)
+Trained on y_train_log (np.log1p(SalePrice)) directly matching Kaggle RMSLE.
 """
 
 import pandas as pd
 import numpy as np
 import optuna
-from sklearn.model_selection import KFold
-from sklearn.preprocessing import PowerTransformer
+from sklearn.model_selection import KFold, train_test_split
 from catboost import CatBoostRegressor
 from sklearn.metrics import mean_squared_error
 import joblib
 import os
+
+optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 # ============================================
 # CONFIGURATION
 # ============================================
 RANDOM_STATE = 42
 N_FOLDS = 5
-N_TRIALS = 50
+N_TRIALS = 30
 
 # ============================================
-# RMSLE METRIC
-# ============================================
-def rmsle(y_true, y_pred):
-    y_true = np.maximum(y_true, 0)
-    y_pred = np.maximum(y_pred, 0)
-    return np.sqrt(mean_squared_error(np.log1p(y_true), np.log1p(y_pred)))
-
-# ============================================
-# LOAD DATA (RAW VERSION)
+# LOAD DATA (RAW VERSION FOR CATBOOST)
 # ============================================
 print("=" * 60)
 print("LOADING RAW DATA FOR CATBOOST")
 print("=" * 60)
 
 X_train_raw = pd.read_csv('./processed_data/X_train_raw.csv')
-y_train = pd.read_csv('./processed_data/y_train.csv').squeeze()
+y_train_log = pd.read_csv('./processed_data/y_train_log.csv').squeeze()
 
 # Identify categorical features
 cat_features = X_train_raw.select_dtypes(include=['object', 'str']).columns.tolist()
 
-# Clean NaN values in categorical columns
 for col in cat_features:
     X_train_raw[col] = X_train_raw[col].fillna('Missing').astype(str)
 
 print(f"X_train_raw shape: {X_train_raw.shape}")
-print(f"y_train shape: {y_train.shape}")
-print(f"Categorical features: {len(cat_features)}")
-print(cat_features[:10])
-
-# ============================================
-# BOX-COX TRANSFORMATION
-# ============================================
-print("\n" + "=" * 60)
-print("APPLYING BOX-COX TRANSFORMATION")
-print("=" * 60)
-
-pt = PowerTransformer(method='box-cox')
-y_transformed = pt.fit_transform(y_train.values.reshape(-1, 1)).flatten()
-print(f"Skewness after Box-Cox: {pd.Series(y_transformed).skew():.4f}")
+print(f"y_train_log shape: {y_train_log.shape}")
+print(f"Categorical features count: {len(cat_features)}")
 
 # ============================================
 # OPTUNA OBJECTIVE FUNCTION
 # ============================================
 def objective(trial):
     params = {
-        'iterations': trial.suggest_int('iterations', 100, 1000, step=100),
-        'depth': trial.suggest_int('depth', 3, 10),
-        'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3, log=True),
-        'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1, 10, log=True),
-        'subsample': trial.suggest_float('subsample', 0.6, 1.0),
-        'colsample_bylevel': trial.suggest_float('colsample_bylevel', 0.6, 1.0),
+        'depth': trial.suggest_int('depth', 3, 7),
+        'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.2, log=True),
+        'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-3, 10.0, log=True),
+        'subsample': trial.suggest_float('subsample', 0.5, 0.95),
+        'random_strength': trial.suggest_float('random_strength', 1e-8, 10.0, log=True),
+        'iterations': 2000,
         'random_seed': RANDOM_STATE,
-        'verbose': False
+        'verbose': False,
+        'early_stopping_rounds': 50
     }
     
-    model = CatBoostRegressor(**params)
-    
     kf = KFold(n_splits=N_FOLDS, shuffle=True, random_state=RANDOM_STATE)
-    rmsle_scores = []
+    rmse_scores = []
     
     for train_idx, val_idx in kf.split(X_train_raw):
         X_train_fold = X_train_raw.iloc[train_idx].copy()
         X_val_fold = X_train_raw.iloc[val_idx].copy()
+        y_train_fold, y_val_fold = y_train_log.iloc[train_idx], y_train_log.iloc[val_idx]
         
-        # Clean NaN in categorical columns for each fold
-        for col in cat_features:
-            X_train_fold[col] = X_train_fold[col].fillna('Missing').astype(str)
-            X_val_fold[col] = X_val_fold[col].fillna('Missing').astype(str)
-        
-        y_train_fold = y_transformed[train_idx]
-        y_val_fold = y_transformed[val_idx]
-        
+        model = CatBoostRegressor(**params)
         model.fit(
             X_train_fold, y_train_fold,
+            eval_set=(X_val_fold, y_val_fold),
             cat_features=cat_features,
             verbose=False
         )
         
-        y_pred_transformed = model.predict(X_val_fold)
+        preds = model.predict(X_val_fold)
+        rmse = np.sqrt(mean_squared_error(y_val_fold, preds))
+        rmse_scores.append(rmse)
         
-        y_pred_original = pt.inverse_transform(y_pred_transformed.reshape(-1, 1)).flatten()
-        y_val_original = pt.inverse_transform(y_val_fold.reshape(-1, 1)).flatten()
-        
-        rmsle_score = rmsle(y_val_original, y_pred_original)
-        rmsle_scores.append(rmsle_score)
-    
-    return np.mean(rmsle_scores)
+    return np.mean(rmse_scores)
 
 # ============================================
 # RUN OPTIMIZATION
 # ============================================
 print("\n" + "=" * 60)
-print("STARTING CATBOOST OPTIMIZATION (RAW DATA, RMSLE)")
+print("STARTING CATBOOST OPTIMIZATION WITH EARLY STOPPING")
 print("=" * 60)
 
 os.makedirs('./experiments', exist_ok=True)
@@ -122,42 +91,48 @@ os.makedirs('./models', exist_ok=True)
 
 study = optuna.create_study(
     direction='minimize',
-    study_name='catboost_raw_optimization_rmsle',
-    storage=f'sqlite:///{os.path.abspath("./experiments/catboost_raw_study_rmsle.db")}',
+    study_name='catboost_optimization_log_target',
+    storage=f'sqlite:///{os.path.abspath("./experiments/catboost_study_log.db")}',
     load_if_exists=True
 )
 
-study.optimize(objective, n_trials=N_TRIALS, show_progress_bar=True)
-
-# ============================================
-# SAVE RESULTS
-# ============================================
-print("\n" + "=" * 60)
-print("SAVING RESULTS")
-print("=" * 60)
+study.optimize(objective, n_trials=N_TRIALS)
 
 best_params = study.best_params
-# Clean training data before final fitting
-X_train_clean = X_train_raw.copy()
-for col in cat_features:
-    X_train_clean[col] = X_train_clean[col].fillna('Missing').astype(str)
-
-# Avoid passing random_seed twice; ensure explicit seed is applied here
-best_params_no_rs = {k: v for k, v in best_params.items() if k != 'random_seed'}
-best_model = CatBoostRegressor(**best_params_no_rs, random_seed=RANDOM_STATE, verbose=False)
-best_model.fit(X_train_clean, y_transformed, cat_features=cat_features)
-
-# Save model using consistent RMSLE suffix
-joblib.dump(best_model, './models/catboost_best_rmsle.pkl')
-joblib.dump(pt, './models/boxcox_transformer.pkl')
-
-trials_df = study.trials_dataframe()
-trials_df.to_csv('./experiments/catboost_raw_trials_rmsle.csv', index=False)
-
-print(f"✅ Best RMSLE: {study.best_value:.6f}")
+print(f"\n✅ Best RMSLE (log-RMSE): {study.best_value:.6f}")
 print(f"✅ Best parameters: {best_params}")
-print("✅ Model saved to './models/catboost_best_rmsle.pkl'")
-print("✅ Trials saved to './experiments/catboost_raw_trials_rmsle.csv'")
+
+# ============================================
+# TRAIN FINAL MODEL ON FULL DATA
+# ============================================
+print("\n" + "=" * 60)
+print("TRAINING FINAL CATBOOST MODEL ON FULL DATA")
+print("=" * 60)
+
+final_params = best_params.copy()
+final_params.update({
+    'iterations': 2000,
+    'random_seed': RANDOM_STATE,
+    'verbose': False,
+    'early_stopping_rounds': 50
+})
+
+X_tr, X_val, y_tr, y_val = train_test_split(X_train_raw, y_train_log, test_size=0.1, random_state=RANDOM_STATE)
+
+best_model = CatBoostRegressor(**final_params)
+best_model.fit(
+    X_tr, y_tr,
+    eval_set=(X_val, y_val),
+    cat_features=cat_features,
+    verbose=False
+)
+
+joblib.dump(best_model, './models/catboost_best.pkl')
+trials_df = study.trials_dataframe()
+trials_df.to_csv('./experiments/catboost_trials_log.csv', index=False)
+
+# Save cat_features list alongside model for downstream ensembling
+joblib.dump(cat_features, './models/cat_features.pkl')
 
 # ============================================
 # GENERATE SUBMISSION
@@ -169,23 +144,14 @@ print("=" * 60)
 X_test_raw = pd.read_csv('./processed_data/X_test_raw.csv')
 test_ids = pd.read_csv('./data/test.csv')['Id']
 
-# Clean test data as well
 for col in cat_features:
     X_test_raw[col] = X_test_raw[col].fillna('Missing').astype(str)
 
-y_pred_transformed = best_model.predict(X_test_raw)
-y_pred_original = pt.inverse_transform(y_pred_transformed.reshape(-1, 1)).flatten()
+y_pred_log = best_model.predict(X_test_raw)
+y_pred_dollars = np.expm1(y_pred_log)
 
-submission = pd.DataFrame({'Id': test_ids, 'SalePrice': y_pred_original})
-import os
 os.makedirs('./submissions', exist_ok=True)
-submission.to_csv('./submissions/submission_catboost_raw.csv', index=False)
+submission = pd.DataFrame({'Id': test_ids, 'SalePrice': y_pred_dollars})
+submission.to_csv('./submissions/submission_catboost_log.csv', index=False)
 
-print("✅ Submission saved to './submissions/submission_catboost_raw.csv'")
-print(f"   Shape: {submission.shape}")
-print("   First 5 rows:")
-print(submission.head())
-
-print("\n" + "=" * 60)
-print("CATBOOST RAW OPTIMIZATION COMPLETED")
-print("=" * 60)
+print("✅ Submission saved to './submissions/submission_catboost_log.csv'")

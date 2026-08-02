@@ -1,152 +1,228 @@
 """
-Find optimal ensemble weights using OOF predictions with RMSLE
+Optimal Weighted Ensemble & Stacking with OOF Predictions
+Combines XGBoost, LightGBM, CatBoost, and Ridge Regression using Scipy SLSQP optimization.
 """
 
 import pandas as pd
 import numpy as np
-import joblib
+import optuna
+from scipy.optimize import minimize
 from sklearn.model_selection import KFold
 from sklearn.metrics import mean_squared_error
-import xgboost as xgb
+from sklearn.linear_model import Ridge
+from sklearn.preprocessing import StandardScaler
+from xgboost import XGBRegressor
+import lightgbm as lgb
 from catboost import CatBoostRegressor
+import joblib
+import os
 
 # ============================================
-# RMSLE METRIC
+# CONFIGURATION
 # ============================================
-def rmsle(y_true, y_pred):
-    y_true = np.maximum(y_true, 0)
-    y_pred = np.maximum(y_pred, 0)
-    return np.sqrt(mean_squared_error(np.log1p(y_true), np.log1p(y_pred)))
-
-# ============================================
-# BEST PARAMETERS FROM OPTIMIZATION
-# ============================================
-best_params_xgb = {
-    'n_estimators': 500,
-    'max_depth': 4,
-    'learning_rate': 0.02565586517922418,
-    'subsample': 0.6998740751199167,
-    'colsample_bytree': 0.6710031509913401,
-    'min_child_weight': 2,
-    'random_state': 42,
-    'verbosity': 0
-}
-
-best_params_cat = {
-    'iterations': 1000,
-    'depth': 7,
-    'learning_rate': 0.039448795637622824,
-    'l2_leaf_reg': 2.4151955617981558,
-    'subsample': 0.9389088575756412,
-    'colsample_bylevel': 0.9403154056041039,
-    'random_seed': 42,
-    'verbose': False
-}
+RANDOM_STATE = 42
+N_FOLDS = 5
 
 # ============================================
 # LOAD DATA
 # ============================================
 print("=" * 60)
-print("LOADING DATA")
+print("LOADING PROCESSED DATA FOR ENSEMBLE")
 print("=" * 60)
 
 X_train = pd.read_csv('./processed_data/X_train.csv')
-y_train = pd.read_csv('./processed_data/y_train.csv').squeeze()
 X_test = pd.read_csv('./processed_data/X_test.csv')
+y_train_log = pd.read_csv('./processed_data/y_train_log.csv').squeeze()
+
+X_train_raw = pd.read_csv('./processed_data/X_train_raw.csv')
+X_test_raw = pd.read_csv('./processed_data/X_test_raw.csv')
+
+cat_features = X_train_raw.select_dtypes(include=['object', 'str']).columns.tolist()
+for col in cat_features:
+    X_train_raw[col] = X_train_raw[col].fillna('Missing').astype(str)
+    X_test_raw[col] = X_test_raw[col].fillna('Missing').astype(str)
+
 test_ids = pd.read_csv('./data/test.csv')['Id']
 
 print(f"X_train shape: {X_train.shape}")
-print(f"y_train shape: {y_train.shape}")
+print(f"X_train_raw shape: {X_train_raw.shape}")
+print(f"y_train_log shape: {y_train_log.shape}")
 
 # ============================================
-# GENERATE OOF PREDICTIONS
+# LOAD BEST PARAMETERS FROM OPTUNA STUDIES
 # ============================================
 print("\n" + "=" * 60)
-print("GENERATING OOF PREDICTIONS")
+print("LOADING OPTIMAL HYPERPARAMETERS")
 print("=" * 60)
 
-kf = KFold(n_splits=5, shuffle=True, random_state=42)
-xgb_oof = np.zeros(len(X_train))
-cat_oof = np.zeros(len(X_train))
+xgb_study = optuna.load_study(
+    study_name='xgboost_optimization_log_target',
+    storage=f'sqlite:///{os.path.abspath("./experiments/xgboost_study_log.db")}'
+)
+lgb_study = optuna.load_study(
+    study_name='lightgbm_optimization_log_target',
+    storage=f'sqlite:///{os.path.abspath("./experiments/lightgbm_study_log.db")}'
+)
+cat_study = optuna.load_study(
+    study_name='catboost_optimization_log_target',
+    storage=f'sqlite:///{os.path.abspath("./experiments/catboost_study_log.db")}'
+)
+
+best_params_xgb = xgb_study.best_params
+best_params_lgb = lgb_study.best_params
+best_params_cat = cat_study.best_params
+
+print("✅ XGBoost Best Params:", best_params_xgb)
+print("✅ LightGBM Best Params:", best_params_lgb)
+print("✅ CatBoost Best Params:", best_params_cat)
+
+# ============================================
+# GENERATE OUT-OF-FOLD (OOF) PREDICTIONS
+# ============================================
+print("\n" + "=" * 60)
+print("GENERATING OUT-OF-FOLD (OOF) PREDICTIONS")
+print("=" * 60)
+
+kf = KFold(n_splits=N_FOLDS, shuffle=True, random_state=RANDOM_STATE)
+
+oof_xgb = np.zeros(len(X_train))
+oof_lgb = np.zeros(len(X_train))
+oof_cat = np.zeros(len(X_train))
+oof_ridge = np.zeros(len(X_train))
+
+test_preds_xgb = np.zeros(len(X_test))
+test_preds_lgb = np.zeros(len(X_test))
+test_preds_cat = np.zeros(len(X_test_raw))
+test_preds_ridge = np.zeros(len(X_test))
+
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
 
 for fold, (train_idx, val_idx) in enumerate(kf.split(X_train)):
-    print(f"  Fold {fold+1}/5")
+    print(f"  Fold {fold+1}/{N_FOLDS}...")
     
-    X_train_fold = X_train.iloc[train_idx]
-    y_train_fold = y_train.iloc[train_idx]
-    X_val_fold = X_train.iloc[val_idx]
-    y_val_fold = y_train.iloc[val_idx]
+    # Fold data splits
+    X_tr, X_va = X_train.iloc[train_idx], X_train.iloc[val_idx]
+    y_tr, y_va = y_train_log.iloc[train_idx], y_train_log.iloc[val_idx]
     
-    # XGBoost
-    xgb_fold = xgb.XGBRegressor(**best_params_xgb)
-    xgb_fold.fit(X_train_fold, y_train_fold)
-    xgb_oof[val_idx] = xgb_fold.predict(X_val_fold)
+    X_tr_raw, X_va_raw = X_train_raw.iloc[train_idx], X_train_raw.iloc[val_idx]
+    X_tr_sc, X_va_sc = X_train_scaled[train_idx], X_train_scaled[val_idx]
     
-    # CatBoost
-    cat_fold = CatBoostRegressor(**best_params_cat)
-    cat_fold.fit(X_train_fold, y_train_fold, verbose=False)
-    cat_oof[val_idx] = cat_fold.predict(X_val_fold)
+    # 1. XGBoost
+    xgb_params = best_params_xgb.copy()
+    xgb_params.update({'n_estimators': 2000, 'random_state': RANDOM_STATE, 'verbosity': 0, 'early_stopping_rounds': 50})
+    model_xgb = XGBRegressor(**xgb_params)
+    model_xgb.fit(X_tr, y_tr, eval_set=[(X_va, y_va)], verbose=False)
+    oof_xgb[val_idx] = model_xgb.predict(X_va)
+    test_preds_xgb += model_xgb.predict(X_test) / N_FOLDS
+    
+    # 2. LightGBM
+    lgb_params = best_params_lgb.copy()
+    lgb_params.update({'n_estimators': 2000, 'random_state': RANDOM_STATE, 'verbosity': -1})
+    model_lgb = lgb.LGBMRegressor(**lgb_params)
+    model_lgb.fit(X_tr, y_tr, eval_set=[(X_va, y_va)], callbacks=[lgb.early_stopping(stopping_rounds=50, verbose=False)])
+    oof_lgb[val_idx] = model_lgb.predict(X_va)
+    test_preds_lgb += model_lgb.predict(X_test) / N_FOLDS
+    
+    # 3. CatBoost
+    cat_params = best_params_cat.copy()
+    cat_params.update({'iterations': 2000, 'random_seed': RANDOM_STATE, 'verbose': False, 'early_stopping_rounds': 50})
+    model_cat = CatBoostRegressor(**cat_params)
+    model_cat.fit(X_tr_raw, y_tr, eval_set=(X_va_raw, y_va), cat_features=cat_features, verbose=False)
+    oof_cat[val_idx] = model_cat.predict(X_va_raw)
+    test_preds_cat += model_cat.predict(X_test_raw) / N_FOLDS
+    
+    # 4. Ridge Regression
+    model_ridge = Ridge(alpha=15.0, random_state=RANDOM_STATE)
+    model_ridge.fit(X_tr_sc, y_tr)
+    oof_ridge[val_idx] = model_ridge.predict(X_va_sc)
+    test_preds_ridge += model_ridge.predict(X_test_scaled) / N_FOLDS
+
+# Print individual OOF RMSLE scores
+print("\n" + "-" * 40)
+print("INDIVIDUAL OOF RMSLE SCORES:")
+print("-" * 40)
+print(f"  CatBoost OOF RMSLE:     {np.sqrt(mean_squared_error(y_train_log, oof_cat)):.6f}")
+print(f"  XGBoost OOF RMSLE:      {np.sqrt(mean_squared_error(y_train_log, oof_xgb)):.6f}")
+print(f"  LightGBM OOF RMSLE:     {np.sqrt(mean_squared_error(y_train_log, oof_lgb)):.6f}")
+print(f"  Ridge Regression OOF:   {np.sqrt(mean_squared_error(y_train_log, oof_ridge)):.6f}")
 
 # ============================================
-# FIND BEST WEIGHT
+# OPTIMIZE ENSEMBLE WEIGHTS WITH SCIPY
 # ============================================
 print("\n" + "=" * 60)
-print("FINDING OPTIMAL ENSEMBLE WEIGHT")
+print("OPTIMIZING ENSEMBLE WEIGHTS (SLSQP CONSTRAINED)")
 print("=" * 60)
 
-best_weight = 0.5
-best_rmsle = float('inf')
-results = []
+oof_matrix = np.column_stack([oof_cat, oof_xgb, oof_lgb, oof_ridge])
+test_matrix = np.column_stack([test_preds_cat, test_preds_xgb, test_preds_lgb, test_preds_ridge])
 
-for w in np.arange(0.0, 1.01, 0.01):
-    ensemble_pred = w * xgb_oof + (1-w) * cat_oof
-    score = rmsle(y_train, ensemble_pred)
-    results.append({'weight_xgb': w, 'rmsle': score})
-    
-    if score < best_rmsle:
-        best_rmsle = score
-        best_weight = w
+def loss_func(weights):
+    w = np.array(weights)
+    pred = oof_matrix @ w
+    return np.sqrt(mean_squared_error(y_train_log, pred))
 
-print(f"\n✅ Best weight: XGBoost = {best_weight:.2f}, CatBoost = {1-best_weight:.2f}")
-print(f"✅ Best OOF RMSLE: {best_rmsle:.6f}")
+init_weights = [0.25, 0.25, 0.25, 0.25]
+bounds = [(0, 1)] * 4
+constraints = ({'type': 'eq', 'fun': lambda w: 1 - sum(w)})
+
+res = minimize(loss_func, init_weights, method='SLSQP', bounds=bounds, constraints=constraints)
+
+best_weights = res.x
+best_ensemble_rmsle = res.fun
+
+print(f"✅ Optimal Weights:")
+print(f"   CatBoost:  {best_weights[0]:.4f}")
+print(f"   XGBoost:   {best_weights[1]:.4f}")
+print(f"   LightGBM:  {best_weights[2]:.4f}")
+print(f"   Ridge:     {best_weights[3]:.4f}")
+print(f"\n🚀 OPTIMAL WEIGHTED ENSEMBLE OOF RMSLE: {best_ensemble_rmsle:.6f}")
 
 # ============================================
-# TRAIN FINAL MODELS ON FULL DATA
+# COMPARE WITH RIDGE STACKING META-MODEL
 # ============================================
 print("\n" + "=" * 60)
-print("TRAINING FINAL MODELS ON FULL DATA")
+print("COMPARING WITH STACKING META-MODEL")
 print("=" * 60)
 
-xgb_final = xgb.XGBRegressor(**best_params_xgb)
-xgb_final.fit(X_train, y_train)
+meta_model = Ridge(alpha=1.0, random_state=RANDOM_STATE)
+meta_model.fit(oof_matrix, y_train_log)
 
-cat_final = CatBoostRegressor(**best_params_cat)
-cat_final.fit(X_train, y_train, verbose=False)
+oof_stacking = meta_model.predict(oof_matrix)
+stacking_rmsle = np.sqrt(mean_squared_error(y_train_log, oof_stacking))
+
+print(f"  Stacking OOF RMSLE: {stacking_rmsle:.6f}")
+
+if best_ensemble_rmsle <= stacking_rmsle:
+    print("✅ Constrained Weighted Average is the winning strategy!")
+    final_test_log_preds = test_matrix @ best_weights
+else:
+    print("✅ Stacking Meta-model is the winning strategy!")
+    final_test_log_preds = meta_model.predict(test_matrix)
 
 # ============================================
-# GENERATE SUBMISSION
+# CREATE SUBMISSION
 # ============================================
 print("\n" + "=" * 60)
-print("GENERATING SUBMISSION")
+print("GENERATING FINAL KAGGLE SUBMISSION")
 print("=" * 60)
 
-xgb_test = xgb_final.predict(X_test)
-cat_test = cat_final.predict(X_test)
+final_test_dollars = np.expm1(final_test_log_preds)
 
-final_pred = best_weight * xgb_test + (1-best_weight) * cat_test
-
+os.makedirs('./submissions', exist_ok=True)
 submission = pd.DataFrame({
     'Id': test_ids,
-    'SalePrice': final_pred
+    'SalePrice': final_test_dollars
 })
 
-submission.to_csv('./submissions/submission_ensemble_rmsle_final.csv', index=False)
+submission.to_csv('./submissions/submission_ensemble_final.csv', index=False)
 
-print("✅ Submission saved to ./submissions/submission_ensemble_rmsle_final.csv")
-print(f"   Shape: {submission.shape}")
-print("   First 5 rows:")
+print("✅ Submission successfully saved to './submissions/submission_ensemble_final.csv'")
+print(f"   Submission shape: {submission.shape}")
+print("\n   First 5 rows of final submission:")
 print(submission.head())
 
 print("\n" + "=" * 60)
-print("ENSEMBLE WEIGHT OPTIMIZATION COMPLETED")
+print("ENSEMBLE PIPELINE COMPLETED")
 print("=" * 60)
