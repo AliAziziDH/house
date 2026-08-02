@@ -260,13 +260,14 @@ print("\n" + "=" * 60)
 print("COMPARING WITH STACKING META-MODEL (LASSO META-LEARNER)")
 print("=" * 60)
 
-meta_model = LassoCV(cv=5, random_state=RANDOM_STATE)
+meta_model = LassoCV(cv=5, positive=True, random_state=RANDOM_STATE)
 meta_model.fit(oof_matrix, y_train_log)
 
 oof_stacking = meta_model.predict(oof_matrix)
 stacking_rmsle = np.sqrt(mean_squared_error(y_train_log, oof_stacking))
 
-print(f"  Stacking OOF RMSLE: {stacking_rmsle:.6f}")
+print(f"  Stacking OOF RMSLE (Positive Constraints): {stacking_rmsle:.6f}")
+print(f"  Meta-model Non-Zero Coefficients: {meta_model.coef_.round(4)}")
 
 from scipy.optimize import minimize_scalar
 
@@ -324,10 +325,10 @@ print(f"🚀 FINAL POST-PROCESSED OOF DOLLAR RMSLE: {best_postprocessed_rmsle:.6
 final_test_log_corrected = final_test_log_preds + variance_correction
 raw_test_dollars = best_c * np.expm1(final_test_log_corrected)
 
-# Safe boundary clipping to protect against extreme test outliers
-final_test_dollars = np.clip(raw_test_dollars, 35000.0, 650000.0)
+# Safe quantile boundary clipping [$42,000, $525,000] based on train 0.1% and 99.7% quantiles
+final_test_dollars = np.clip(raw_test_dollars, 42000.0, 525000.0)
 clipped_count = np.sum(raw_test_dollars != final_test_dollars)
-print(f"  Applied safe prediction clipping [$35,000, $650,000]: {clipped_count} test prices clipped.")
+print(f"  Applied safe quantile clipping [$42,000, $525,000]: {clipped_count} test prices clipped.")
 
 # ============================================
 # CREATE SUBMISSION
