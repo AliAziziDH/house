@@ -37,6 +37,13 @@ y_train_log = np.log1p(y_train)
 X_train = train.drop(['Id', 'SalePrice'], axis=1)
 X_test = test.drop(['Id'], axis=1)
 
+# Convert numeric categorical features to string
+for col in ['MSSubClass', 'YrSold', 'MoSold']:
+    X_train[col] = X_train[col].astype(str)
+    X_test[col] = X_test[col].astype(str)
+
+print("✅ Numeric categorical features ('MSSubClass', 'YrSold', 'MoSold') converted to string.")
+
 print(f"X_train shape: {X_train.shape}")
 print(f"X_test shape: {X_test.shape}")
 print(f"y_train shape: {y_train.shape}")
@@ -163,22 +170,39 @@ X_train['TotalBathrooms'] = (X_train['FullBath'] + 0.5 * X_train['HalfBath'] +
 X_test['TotalBathrooms'] = (X_test['FullBath'] + 0.5 * X_test['HalfBath'] +
                             X_test['BsmtFullBath'] + 0.5 * X_test['BsmtHalfBath'])
 
-X_train['HouseAge'] = X_train['YrSold'] - X_train['YearBuilt']
-X_test['HouseAge'] = X_test['YrSold'] - X_test['YearBuilt']
+# Convert YrSold to numeric for age calculations
+yr_sold_train = X_train['YrSold'].astype(int)
+yr_sold_test = X_test['YrSold'].astype(int)
 
-X_train['RemodAge'] = X_train['YrSold'] - X_train['YearRemodAdd']
-X_test['RemodAge'] = X_test['YrSold'] - X_test['YearRemodAdd']
+X_train['HouseAge'] = yr_sold_train - X_train['YearBuilt']
+X_test['HouseAge'] = yr_sold_test - X_test['YearBuilt']
 
-X_train['IsNew'] = (X_train['YearBuilt'] == X_train['YrSold']).astype(int)
-X_test['IsNew'] = (X_test['YearBuilt'] == X_test['YrSold']).astype(int)
+X_train['RemodAge'] = yr_sold_train - X_train['YearRemodAdd']
+X_test['RemodAge'] = yr_sold_test - X_test['YearRemodAdd']
+
+X_train['IsNew'] = (X_train['YearBuilt'] == yr_sold_train).astype(int)
+X_test['IsNew'] = (X_test['YearBuilt'] == yr_sold_test).astype(int)
 
 X_train['QualityScore'] = X_train['OverallQual'] * X_train['OverallCond']
 X_test['QualityScore'] = X_test['OverallQual'] * X_test['OverallCond']
 
-X_train['GarageAge'] = np.where(X_train['GarageYrBlt'] == 0, 0, X_train['YrSold'] - X_train['GarageYrBlt'])
-X_test['GarageAge'] = np.where(X_test['GarageYrBlt'] == 0, 0, X_test['YrSold'] - X_test['GarageYrBlt'])
+X_train['GarageAge'] = np.where(X_train['GarageYrBlt'] == 0, 0, yr_sold_train - X_train['GarageYrBlt'])
+X_test['GarageAge'] = np.where(X_test['GarageYrBlt'] == 0, 0, yr_sold_test - X_test['GarageYrBlt'])
 
-print("✅ Feature engineering completed.")
+# Binary boolean indicator features
+X_train['HasBasement'] = (X_train['TotalBsmtSF'] > 0).astype(int)
+X_test['HasBasement'] = (X_test['TotalBsmtSF'] > 0).astype(int)
+
+X_train['HasGarage'] = (X_train['GarageArea'] > 0).astype(int)
+X_test['HasGarage'] = (X_test['GarageArea'] > 0).astype(int)
+
+X_train['HasFireplace'] = (X_train['Fireplaces'] > 0).astype(int)
+X_test['HasFireplace'] = (X_test['Fireplaces'] > 0).astype(int)
+
+X_train['HasPool'] = (X_train['PoolArea'] > 0).astype(int)
+X_test['HasPool'] = (X_test['PoolArea'] > 0).astype(int)
+
+print("✅ Advanced Feature engineering & Binary indicators completed.")
 
 # ============================================
 # 8. LOG TRANSFORMATION OF SKEWED NUMERICAL FEATURES
@@ -188,7 +212,8 @@ print("LOG TRANSFORMING SKEWED NUMERICAL FEATURES")
 print("=" * 60)
 
 numeric_cols = X_train.select_dtypes(include=['int64', 'float64']).columns
-exclude_from_log = ['YrSold', 'MoSold', 'YearBuilt', 'YearRemodAdd', 'GarageYrBlt', 'IsNew']
+exclude_from_log = ['YrSold', 'MoSold', 'YearBuilt', 'YearRemodAdd', 'GarageYrBlt', 'IsNew', 
+                    'HasBasement', 'HasGarage', 'HasFireplace', 'HasPool', 'MSSubClass']
 num_cols_to_transform = [c for c in numeric_cols if c not in exclude_from_log]
 
 skewness = X_train[num_cols_to_transform].apply(lambda x: skew(x.dropna()))
