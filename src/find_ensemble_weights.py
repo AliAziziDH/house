@@ -37,7 +37,7 @@ y_train_log = pd.read_csv('./processed_data/y_train_log.csv').squeeze()
 X_train_raw = pd.read_csv('./processed_data/X_train_raw.csv')
 X_test_raw = pd.read_csv('./processed_data/X_test_raw.csv')
 
-cat_features = X_train_raw.select_dtypes(include=['object', 'str']).columns.tolist()
+cat_features = X_train_raw.select_dtypes(include=['object']).columns.tolist()
 for col in cat_features:
     X_train_raw[col] = X_train_raw[col].fillna('Missing').astype(str)
     X_test_raw[col] = X_test_raw[col].fillna('Missing').astype(str)
