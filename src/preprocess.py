@@ -186,6 +186,10 @@ X_test['IsNew'] = (X_test['YearBuilt'] == yr_sold_test).astype(int)
 X_train['QualityScore'] = X_train['OverallQual'] * X_train['OverallCond']
 X_test['QualityScore'] = X_test['OverallQual'] * X_test['OverallCond']
 
+# Cap GarageYrBlt at YrSold to fix typos like GarageYrBlt = 2207 in test set (e.g. Id 2593)
+X_train['GarageYrBlt'] = np.where(X_train['GarageYrBlt'] > yr_sold_train, yr_sold_train, X_train['GarageYrBlt'])
+X_test['GarageYrBlt'] = np.where(X_test['GarageYrBlt'] > yr_sold_test, yr_sold_test, X_test['GarageYrBlt'])
+
 X_train['GarageAge'] = np.where(X_train['GarageYrBlt'] == 0, 0, yr_sold_train - X_train['GarageYrBlt'])
 X_test['GarageAge'] = np.where(X_test['GarageYrBlt'] == 0, 0, yr_sold_test - X_test['GarageYrBlt'])
 
@@ -202,7 +206,7 @@ X_test['HasFireplace'] = (X_test['Fireplaces'] > 0).astype(int)
 X_train['HasPool'] = (X_train['PoolArea'] > 0).astype(int)
 X_test['HasPool'] = (X_test['PoolArea'] > 0).astype(int)
 
-print("✅ Advanced Feature engineering & Binary indicators completed.")
+print("✅ Advanced Feature engineering, GarageYrBlt capping & Binary indicators completed.")
 
 # ============================================
 # 8. LOG TRANSFORMATION OF SKEWED NUMERICAL FEATURES
@@ -227,6 +231,14 @@ for col in high_skew_cols:
     X_test[col] = np.log1p(X_test[col])
 
 print("✅ Skewed continuous numerical features transformed with np.log1p.")
+
+# Clip continuous numerical test features to training min/max bounds to prevent extrapolation
+print("   Clipping continuous numerical features in X_test to X_train min/max bounds...")
+for col in num_cols_to_transform:
+    tr_min, tr_max = X_train[col].min(), X_train[col].max()
+    X_test[col] = X_test[col].clip(tr_min, tr_max)
+
+print("✅ Feature clipping on X_test completed.")
 
 # Save RAW dataset for CatBoost (before Ordinal & One-Hot Encoding)
 X_train_raw = X_train.copy()

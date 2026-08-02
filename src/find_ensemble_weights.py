@@ -308,12 +308,12 @@ rmsle_var_corrected = rmsle_dollars(raw_y_train, oof_pred_corrected_dollars)
 print(f"  OOF Dollar RMSLE (Uncorrected expm1):       {rmsle_uncorrected:.6f}")
 print(f"  OOF Dollar RMSLE (Variance-Corrected):      {rmsle_var_corrected:.6f}")
 
-# 2. Optimal Scalar Multiplier Search: c * expm1(y_log + variance_correction)
+# 2. Optimal Scalar Multiplier Search (Constrained c >= 1.000 to offset underestimation penalty)
 def multiplier_loss(c):
     preds = c * oof_pred_corrected_dollars
     return rmsle_dollars(raw_y_train, preds)
 
-res_multiplier = minimize_scalar(multiplier_loss, bounds=(0.98, 1.05), method='bounded')
+res_multiplier = minimize_scalar(multiplier_loss, bounds=(1.000, 1.010), method='bounded')
 best_c = res_multiplier.x
 best_postprocessed_rmsle = res_multiplier.fun
 
