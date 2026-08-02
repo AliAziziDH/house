@@ -268,21 +268,68 @@ stacking_rmsle = np.sqrt(mean_squared_error(y_train_log, oof_stacking))
 
 print(f"  Stacking OOF RMSLE: {stacking_rmsle:.6f}")
 
+from scipy.optimize import minimize_scalar
+
 if best_ensemble_rmsle <= stacking_rmsle:
     print("✅ Constrained Weighted Average is the winning strategy!")
+    oof_winning = oof_matrix @ best_weights
     final_test_log_preds = test_matrix @ best_weights
 else:
     print("✅ Stacking Meta-model is the winning strategy!")
+    oof_winning = oof_stacking
     final_test_log_preds = meta_model.predict(test_matrix)
+
+# ============================================
+# POST-PROCESSING: LOG-BIAS CORRECTION & OPTIMAL MULTIPLIER (JENSEN'S INEQUALITY FIX)
+# ============================================
+print("\n" + "=" * 60)
+print("POST-PROCESSING: LOG-BIAS CORRECTION & OPTIMAL MULTIPLIER SEARCH")
+print("=" * 60)
+
+raw_y_train = pd.read_csv('./processed_data/y_train.csv').squeeze()
+
+def rmsle_dollars(y_true, y_pred):
+    y_true = np.maximum(y_true, 0)
+    y_pred = np.maximum(y_pred, 0)
+    return np.sqrt(mean_squared_error(np.log1p(y_true), np.log1p(y_pred)))
+
+# 1. Log-normal expectation correction: E[y] = exp(mu + sigma^2 / 2) - 1
+oof_mse = mean_squared_error(y_train_log, oof_winning)
+variance_correction = oof_mse / 2.0
+print(f"  Calculated OOF Log Variance (sigma^2): {oof_mse:.6f}")
+print(f"  Variance Correction Factor (+sigma^2 / 2): +{variance_correction:.6f}")
+
+oof_log_corrected = oof_winning + variance_correction
+oof_pred_corrected_dollars = np.expm1(oof_log_corrected)
+
+rmsle_uncorrected = rmsle_dollars(raw_y_train, np.expm1(oof_winning))
+rmsle_var_corrected = rmsle_dollars(raw_y_train, oof_pred_corrected_dollars)
+
+print(f"  OOF Dollar RMSLE (Uncorrected expm1):       {rmsle_uncorrected:.6f}")
+print(f"  OOF Dollar RMSLE (Variance-Corrected):      {rmsle_var_corrected:.6f}")
+
+# 2. Optimal Scalar Multiplier Search: c * expm1(y_log + variance_correction)
+def multiplier_loss(c):
+    preds = c * oof_pred_corrected_dollars
+    return rmsle_dollars(raw_y_train, preds)
+
+res_multiplier = minimize_scalar(multiplier_loss, bounds=(0.98, 1.05), method='bounded')
+best_c = res_multiplier.x
+best_postprocessed_rmsle = res_multiplier.fun
+
+print(f"\n✅ Optimal Scalar Multiplier c*: {best_c:.5f}")
+print(f"🚀 FINAL POST-PROCESSED OOF DOLLAR RMSLE: {best_postprocessed_rmsle:.6f}")
+
+# Apply to test predictions
+final_test_log_corrected = final_test_log_preds + variance_correction
+final_test_dollars = best_c * np.expm1(final_test_log_corrected)
 
 # ============================================
 # CREATE SUBMISSION
 # ============================================
 print("\n" + "=" * 60)
-print("GENERATING FINAL KAGGLE SUBMISSION")
+print("GENERATING FINAL KAGGLE SUBMISSION (POST-PROCESSED)")
 print("=" * 60)
-
-final_test_dollars = np.expm1(final_test_log_preds)
 
 os.makedirs('./submissions', exist_ok=True)
 submission = pd.DataFrame({
@@ -292,11 +339,11 @@ submission = pd.DataFrame({
 
 submission.to_csv('./submissions/submission_ensemble_final.csv', index=False)
 
-print("✅ Submission successfully saved to './submissions/submission_ensemble_final.csv'")
+print("✅ Calibrated submission successfully saved to './submissions/submission_ensemble_final.csv'")
 print(f"   Submission shape: {submission.shape}")
-print("\n   First 5 rows of final submission:")
+print("\n   First 5 rows of calibrated final submission:")
 print(submission.head())
 
 print("\n" + "=" * 60)
-print("ENSEMBLE PIPELINE COMPLETED")
+print("ENSEMBLE & POST-PROCESSING PIPELINE COMPLETED")
 print("=" * 60)
