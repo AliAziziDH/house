@@ -39,6 +39,8 @@ print(f"y_train_log shape: {y_train_log.shape}")
 # ============================================
 def objective(trial):
     params = {
+        'objective': 'reg:pseudohubererror',
+        'huber_slope': trial.suggest_float('huber_slope', 0.01, 1.0, log=True),
         'max_depth': trial.suggest_int('max_depth', 3, 7),
         'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.2, log=True),
         'subsample': trial.suggest_float('subsample', 0.5, 0.95),

@@ -322,7 +322,12 @@ print(f"🚀 FINAL POST-PROCESSED OOF DOLLAR RMSLE: {best_postprocessed_rmsle:.6
 
 # Apply to test predictions
 final_test_log_corrected = final_test_log_preds + variance_correction
-final_test_dollars = best_c * np.expm1(final_test_log_corrected)
+raw_test_dollars = best_c * np.expm1(final_test_log_corrected)
+
+# Safe boundary clipping to protect against extreme test outliers
+final_test_dollars = np.clip(raw_test_dollars, 35000.0, 650000.0)
+clipped_count = np.sum(raw_test_dollars != final_test_dollars)
+print(f"  Applied safe prediction clipping [$35,000, $650,000]: {clipped_count} test prices clipped.")
 
 # ============================================
 # CREATE SUBMISSION

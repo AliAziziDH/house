@@ -46,6 +46,7 @@ print(f"Categorical features count: {len(cat_features)}")
 # ============================================
 def objective(trial):
     params = {
+        'loss_function': 'Huber:delta=1.0',
         'depth': trial.suggest_int('depth', 3, 7),
         'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.2, log=True),
         'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-3, 10.0, log=True),
