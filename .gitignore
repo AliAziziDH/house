@@ -1,33 +1,52 @@
-# Models and data (too large for git)
-*.pkl
-*.csv
-*.db
-data/
-processed_data/
-# Ignore everything in models/ except .gitkeep
-models/*
-!models/.gitkeep
+# ============================================
+# AuroraGate — Context & Git Exclusions
+# ============================================
 
-# Ignore everything in submissions/ except .gitkeep
-submissions/*
-!submissions/.gitkeep
+# داده‌های خام (سنگین، نباید وارد context یا git شوند)
+data/*.csv
+data/*.zip
+
+# خروجی‌های پردازش‌شده
+processed_data/
+submissions/
+
+# مدل‌های ذخیره‌شده (binary)
+models/*.pkl
+models/*.cbm
+models/*.bin
+
+# CatBoost logs
+catboost_info/
 
 # Python cache
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+.Python
 
-# Virtual environment
-.venv/
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Virtual environments
+.env
 venv/
+env/
+.venv/
+
+# Optuna storage
+*.db
+optuna_study*
+
+# Temp files
+*.log
+*.tmp
+*.temp
+scratch/*.csv
+scratch/*.pkl
 
 # IDE
-.vscode/
-.idea/
-*.swp
 .DS_Store
-
-# Jupyter checkpoints
-notebooks/.ipynb_checkpoints/
-**/.ipynb_checkpoints/
-catboost_info/
+.idea/
+.vscode/

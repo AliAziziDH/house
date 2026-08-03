@@ -6,8 +6,6 @@ Two versions:
 """
 
 import pandas as pd
-import numpy as np
-import joblib
 import xgboost as xgb
 from catboost import CatBoostRegressor
 
@@ -94,6 +92,7 @@ print("=" * 60)
 
 # 1. CatBoost only
 import os
+
 os.makedirs('./submissions', exist_ok=True)
 
 submission_cat = pd.DataFrame({'Id': test_ids, 'SalePrice': cat_pred})

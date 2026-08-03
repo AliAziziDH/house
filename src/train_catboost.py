@@ -3,14 +3,15 @@ CatBoost Optimization with Optuna (Native Categoricals & Early Stopping)
 Trained on y_train_log (np.log1p(SalePrice)) directly matching Kaggle RMSLE.
 """
 
-import pandas as pd
+import os
+
+import joblib
 import numpy as np
 import optuna
-from sklearn.model_selection import KFold, train_test_split
+import pandas as pd
 from catboost import CatBoostRegressor
 from sklearn.metrics import mean_squared_error
-import joblib
-import os
+from sklearn.model_selection import KFold, train_test_split
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 

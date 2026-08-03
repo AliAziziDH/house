@@ -1,6 +1,5 @@
-import pandas as pd
-import numpy as np
 import joblib
+import pandas as pd
 
 # ============================================
 # LOAD MODELS AND TRANSFORMER
@@ -38,7 +37,7 @@ weight_xgb = 0.64
 weight_catboost = 0.36
 final_pred = weight_xgb * xgb_pred_orig + weight_catboost * catboost_pred_orig
 
-import os  
+import os
 
 os.makedirs('./submissions', exist_ok=True)
 

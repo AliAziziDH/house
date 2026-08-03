@@ -1,7 +1,5 @@
-import pandas as pd
-import numpy as np
 import joblib
-from sklearn.preprocessing import PowerTransformer
+import pandas as pd
 
 # ============================================
 # LOAD MODELS AND DATA
@@ -70,12 +68,12 @@ submission = pd.DataFrame({
     'SalePrice': ensemble_pred
 })
 
-import os  
+import os
 
 os.makedirs('./submissions', exist_ok=True)
 
 submission.to_csv('submission_ensemble_final.csv', index=False)
 print("✅ Submission file saved as 'submission_ensemble_final.csv'")
 print(f"   Shape: {submission.shape}")
-print(f"   First 5 rows:")
+print("   First 5 rows:")
 print(submission.head())

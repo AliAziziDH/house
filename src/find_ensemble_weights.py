@@ -3,21 +3,21 @@ Optimal Weighted Ensemble & Stacking with 6 Diverse Base Models
 Combines CatBoost, XGBoost, LightGBM, Ridge, Lasso, and ElasticNet using Scipy SLSQP optimization.
 """
 
-import pandas as pd
-import numpy as np
-import optuna
-from scipy.optimize import minimize
-from sklearn.model_selection import KFold
-from sklearn.metrics import mean_squared_error
-from sklearn.linear_model import Ridge, LassoCV, ElasticNetCV
-from sklearn.preprocessing import StandardScaler, RobustScaler
-from sklearn.pipeline import make_pipeline
-from xgboost import XGBRegressor
-import lightgbm as lgb
-from catboost import CatBoostRegressor
-import joblib
 import os
 import warnings
+
+import lightgbm as lgb
+import numpy as np
+import optuna
+import pandas as pd
+from catboost import CatBoostRegressor
+from scipy.optimize import minimize
+from sklearn.linear_model import ElasticNetCV, LassoCV, Ridge
+from sklearn.metrics import mean_squared_error
+from sklearn.model_selection import KFold
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import RobustScaler, StandardScaler
+from xgboost import XGBRegressor
 
 warnings.filterwarnings('ignore')
 
@@ -244,7 +244,7 @@ res = minimize(loss_func, init_weights, method='SLSQP', bounds=bounds, constrain
 best_weights = res.x
 best_ensemble_rmsle = res.fun
 
-print(f"✅ Optimal 6-Model Weights:")
+print("✅ Optimal 6-Model Weights:")
 print(f"   CatBoost:    {best_weights[0]:.4f}")
 print(f"   XGBoost:     {best_weights[1]:.4f}")
 print(f"   LightGBM:    {best_weights[2]:.4f}")

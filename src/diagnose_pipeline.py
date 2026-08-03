@@ -3,9 +3,10 @@ Comprehensive Pipeline & Submission Diagnostic Script
 Audits prediction distributions, feature alignment, dataset drift, and model weights.
 """
 
-import pandas as pd
-import numpy as np
 import os
+
+import numpy as np
+import pandas as pd
 
 print("=" * 70)
 print("COMPREHENSIVE PIPELINE DIAGNOSTIC AUDIT")
@@ -110,9 +111,9 @@ print("\n" + "=" * 70)
 print("AUDIT 3: LINEAR MODEL COEFFICIENT AUDIT")
 print("=" * 70)
 
-from sklearn.linear_model import Ridge, LassoCV, ElasticNetCV
-from sklearn.preprocessing import RobustScaler, StandardScaler
+from sklearn.linear_model import LassoCV, Ridge
 from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import RobustScaler, StandardScaler
 
 # Fit simple models to inspect max coefficient weights
 pipe_ridge = make_pipeline(StandardScaler(), Ridge(alpha=15.0)).fit(X_train, y_train_log)
