@@ -5,6 +5,7 @@ generating clean OOF and Test predictions.
 """
 
 import os
+from typing import Dict, Any, List
 
 import joblib
 import numpy as np
@@ -18,8 +19,8 @@ from sklearn.preprocessing import RobustScaler
 # ============================================
 # CONFIGURATION
 # ============================================
-RANDOM_STATE = 42
-N_FOLDS = 5
+RANDOM_STATE: int = 42
+N_FOLDS: int = 5
 
 # ============================================
 # LOAD DATA
@@ -31,6 +32,11 @@ print("=" * 60)
 X_train = pd.read_csv('./processed_data/X_train.csv')
 X_test = pd.read_csv('./processed_data/X_test.csv')
 y_train_log = pd.read_csv('./processed_data/y_train_log.csv').squeeze()
+
+# Load original raw train data to prevent target leakage in Neighborhood encoding
+raw_train = pd.read_csv('./data/train.csv')
+raw_train = raw_train[~((raw_train['GrLivArea'] > 4000) & (raw_train['SalePrice'] < 300000))].reset_index(drop=True)
+raw_neighborhoods = raw_train['Neighborhood']
 
 print(f"X_train shape: {X_train.shape}")
 print(f"X_test shape: {X_test.shape}")
@@ -57,9 +63,20 @@ l1_ratios = [0.1, 0.3, 0.5, 0.7, 0.8, 0.9, 0.95, 0.99]
 
 for fold, (train_idx, val_idx) in enumerate(kf.split(X_train)):
     print(f"  Fold {fold+1}/{N_FOLDS}...")
-    X_tr, X_va = X_train.iloc[train_idx], X_train.iloc[val_idx]
+    X_tr, X_va = X_train.iloc[train_idx].copy(), X_train.iloc[val_idx].copy()
     y_tr, y_va = y_train_log.iloc[train_idx], y_train_log.iloc[val_idx]
     
+    # Leakage-Free Fold-by-Fold Neighborhood Target Rank Mapping
+    fold_raw_train = raw_train.iloc[train_idx].copy()
+    fold_raw_train['TotalSF'] = fold_raw_train['TotalBsmtSF'] + fold_raw_train['1stFlrSF'] + fold_raw_train['2ndFlrSF']
+    fold_raw_train['PricePerSF'] = fold_raw_train['SalePrice'] / fold_raw_train['TotalSF']
+
+    neigh_order = fold_raw_train.groupby('Neighborhood')['PricePerSF'].median().sort_values().index
+    neigh_map = {n: i + 1 for i, n in enumerate(neigh_order)}
+
+    X_tr['Neighborhood'] = raw_neighborhoods.iloc[train_idx].map(neigh_map).fillna(13).astype(int)
+    X_va['Neighborhood'] = raw_neighborhoods.iloc[val_idx].map(neigh_map).fillna(13).astype(int)
+
     # 1. Lasso Pipeline
     model_lasso = make_pipeline(
         RobustScaler(),

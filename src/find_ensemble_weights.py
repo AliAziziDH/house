@@ -5,13 +5,14 @@ Combines CatBoost, XGBoost, LightGBM, Ridge, Lasso, and ElasticNet using Scipy S
 
 import os
 import warnings
+from typing import Dict, Any, List, Tuple
 
 import lightgbm as lgb
 import numpy as np
 import optuna
 import pandas as pd
 from catboost import CatBoostRegressor
-from scipy.optimize import minimize
+from scipy.optimize import minimize, minimize_scalar
 from sklearn.linear_model import ElasticNetCV, LassoCV, Ridge
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import KFold
@@ -24,8 +25,8 @@ warnings.filterwarnings('ignore')
 # ============================================
 # CONFIGURATION
 # ============================================
-RANDOM_STATE = 42
-N_FOLDS = 5
+RANDOM_STATE: int = 42
+N_FOLDS: int = 5
 
 # ============================================
 # LOAD DATA
@@ -40,6 +41,11 @@ y_train_log = pd.read_csv('./processed_data/y_train_log.csv').squeeze()
 
 X_train_raw = pd.read_csv('./processed_data/X_train_raw.csv')
 X_test_raw = pd.read_csv('./processed_data/X_test_raw.csv')
+
+# Load original raw train data to prevent target leakage in Neighborhood encoding
+raw_train = pd.read_csv('./data/train.csv')
+raw_train = raw_train[~((raw_train['GrLivArea'] > 4000) & (raw_train['SalePrice'] < 300000))].reset_index(drop=True)
+raw_neighborhoods = raw_train['Neighborhood']
 
 cat_features = X_train_raw.select_dtypes(include=['object']).columns.tolist()
 for col in cat_features:
@@ -59,8 +65,8 @@ print("\n" + "=" * 60)
 print("LOADING OPTIMAL HYPERPARAMETERS")
 print("=" * 60)
 
-DEFAULT_XGB_PARAMS = {
-    'max_depth': 5,
+DEFAULT_XGB_PARAMS: Dict[str, Any] = {
+    'max_depth': 4,  # Clamped to 4
     'learning_rate': 0.010110231750868986,
     'subsample': 0.5034728283142227,
     'colsample_bytree': 0.504544868823299,
@@ -70,7 +76,7 @@ DEFAULT_XGB_PARAMS = {
     'reg_lambda': 0.019342719287003877
 }
 
-DEFAULT_LGB_PARAMS = {
+DEFAULT_LGB_PARAMS: Dict[str, Any] = {
     'max_depth': 4,
     'num_leaves': 63,
     'learning_rate': 0.021194390248830346,
@@ -81,8 +87,8 @@ DEFAULT_LGB_PARAMS = {
     'reg_lambda': 1.7472249548155823e-06
 }
 
-DEFAULT_CAT_PARAMS = {
-    'depth': 4,
+DEFAULT_CAT_PARAMS: Dict[str, Any] = {
+    'depth': 4,      # Clamped to 4
     'learning_rate': 0.020978632623778505,
     'l2_leaf_reg': 0.012607414383039797,
     'subsample': 0.6441998268583774,
@@ -116,6 +122,10 @@ try:
 except Exception:
     best_params_cat = DEFAULT_CAT_PARAMS
 
+# Defensive tree depth clamping
+best_params_xgb['max_depth'] = min(best_params_xgb.get('max_depth', 4), 4)
+best_params_cat['depth'] = min(best_params_cat.get('depth', 4), 4)
+
 print("✅ XGBoost Best Params:", best_params_xgb)
 print("✅ LightGBM Best Params:", best_params_lgb)
 print("✅ CatBoost Best Params:", best_params_cat)
@@ -143,10 +153,6 @@ test_preds_ridge = np.zeros(len(X_test))
 test_preds_lasso = np.zeros(len(X_test))
 test_preds_elasticnet = np.zeros(len(X_test))
 
-scaler = StandardScaler()
-X_train_scaled = scaler.fit_transform(X_train)
-X_test_scaled = scaler.transform(X_test)
-
 alphas_lasso = np.logspace(-5, 1, 100)
 alphas_elasticnet = np.logspace(-5, 1, 100)
 l1_ratios = [0.1, 0.3, 0.5, 0.7, 0.8, 0.9, 0.95, 0.99]
@@ -155,11 +161,30 @@ for fold, (train_idx, val_idx) in enumerate(kf.split(X_train)):
     print(f"  Fold {fold+1}/{N_FOLDS}...")
     
     # Fold data splits
-    X_tr, X_va = X_train.iloc[train_idx], X_train.iloc[val_idx]
+    X_tr, X_va = X_train.iloc[train_idx].copy(), X_train.iloc[val_idx].copy()
     y_tr, y_va = y_train_log.iloc[train_idx], y_train_log.iloc[val_idx]
     
-    X_tr_raw, X_va_raw = X_train_raw.iloc[train_idx], X_train_raw.iloc[val_idx]
-    X_tr_sc, X_va_sc = X_train_scaled[train_idx], X_train_scaled[val_idx]
+    X_tr_raw, X_va_raw = X_train_raw.iloc[train_idx].copy(), X_train_raw.iloc[val_idx].copy()
+
+    # Leakage-Free Fold-by-Fold Neighborhood Target Rank Mapping
+    fold_raw_train = raw_train.iloc[train_idx].copy()
+    fold_raw_train['TotalSF'] = fold_raw_train['TotalBsmtSF'] + fold_raw_train['1stFlrSF'] + fold_raw_train['2ndFlrSF']
+    fold_raw_train['PricePerSF'] = fold_raw_train['SalePrice'] / fold_raw_train['TotalSF']
+
+    neigh_order = fold_raw_train.groupby('Neighborhood')['PricePerSF'].median().sort_values().index
+    neigh_map = {n: i + 1 for i, n in enumerate(neigh_order)}
+
+    X_tr['Neighborhood'] = raw_neighborhoods.iloc[train_idx].map(neigh_map).fillna(13).astype(int)
+    X_va['Neighborhood'] = raw_neighborhoods.iloc[val_idx].map(neigh_map).fillna(13).astype(int)
+
+    X_tr_raw['Neighborhood'] = raw_neighborhoods.iloc[train_idx].map(neigh_map).fillna(13).astype(int)
+    X_va_raw['Neighborhood'] = raw_neighborhoods.iloc[val_idx].map(neigh_map).fillna(13).astype(int)
+
+    # Fold Scaler (prevents std/mean leakage from val fold)
+    fold_scaler = StandardScaler()
+    X_tr_sc = fold_scaler.fit_transform(X_tr)
+    X_va_sc = fold_scaler.transform(X_va)
+    X_test_sc_fold = fold_scaler.transform(X_test)
     
     # 1. CatBoost
     cat_params = best_params_cat.copy()
@@ -185,13 +210,13 @@ for fold, (train_idx, val_idx) in enumerate(kf.split(X_train)):
     oof_lgb[val_idx] = model_lgb.predict(X_va)
     test_preds_lgb += model_lgb.predict(X_test) / N_FOLDS
     
-    # 4. Ridge Regression
+    # 4. Ridge Regression (scaled cleanly inside fold)
     model_ridge = Ridge(alpha=15.0, random_state=RANDOM_STATE)
     model_ridge.fit(X_tr_sc, y_tr)
     oof_ridge[val_idx] = model_ridge.predict(X_va_sc)
-    test_preds_ridge += model_ridge.predict(X_test_scaled) / N_FOLDS
+    test_preds_ridge += model_ridge.predict(X_test_sc_fold) / N_FOLDS
 
-    # 5. Lasso Regression (with RobustScaler)
+    # 5. Lasso Regression (with RobustScaler inside fold)
     model_lasso = make_pipeline(
         RobustScaler(),
         LassoCV(alphas=alphas_lasso, cv=5, random_state=RANDOM_STATE, max_iter=10000)
@@ -200,7 +225,7 @@ for fold, (train_idx, val_idx) in enumerate(kf.split(X_train)):
     oof_lasso[val_idx] = model_lasso.predict(X_va)
     test_preds_lasso += model_lasso.predict(X_test) / N_FOLDS
 
-    # 6. ElasticNet Regression (with RobustScaler)
+    # 6. ElasticNet Regression (with RobustScaler inside fold)
     model_elasticnet = make_pipeline(
         RobustScaler(),
         ElasticNetCV(alphas=alphas_elasticnet, l1_ratio=l1_ratios, cv=5, random_state=RANDOM_STATE, max_iter=10000)
@@ -221,7 +246,7 @@ print(f"  Lasso Regression OOF:   {np.sqrt(mean_squared_error(y_train_log, oof_l
 print(f"  ElasticNet OOF RMSLE:   {np.sqrt(mean_squared_error(y_train_log, oof_elasticnet)):.6f}")
 
 # ============================================
-# OPTIMIZE ENSEMBLE WEIGHTS WITH SCIPY
+# OPTIMIZE ENSEMBLE WEIGHTS WITH SCIPY (SLSQP)
 # ============================================
 print("\n" + "=" * 60)
 print("OPTIMIZING ENSEMBLE WEIGHTS (SLSQP CONSTRAINED)")
@@ -230,14 +255,14 @@ print("=" * 60)
 oof_matrix = np.column_stack([oof_cat, oof_xgb, oof_lgb, oof_ridge, oof_lasso, oof_elasticnet])
 test_matrix = np.column_stack([test_preds_cat, test_preds_xgb, test_preds_lgb, test_preds_ridge, test_preds_lasso, test_preds_elasticnet])
 
-def loss_func(weights):
+def loss_func(weights: np.ndarray) -> float:
     w = np.array(weights)
     pred = oof_matrix @ w
     return np.sqrt(mean_squared_error(y_train_log, pred))
 
-init_weights = [1/6] * 6
-bounds = [(0, 1)] * 6
-constraints = ({'type': 'eq', 'fun': lambda w: 1 - sum(w)})
+init_weights: List[float] = [1.0 / 6.0] * 6
+bounds: List[Tuple[float, float]] = [(0.0, 1.0)] * 6
+constraints: Dict[str, Any] = {'type': 'eq', 'fun': lambda w: 1.0 - np.sum(w)}
 
 res = minimize(loss_func, init_weights, method='SLSQP', bounds=bounds, constraints=constraints)
 
@@ -269,8 +294,6 @@ stacking_rmsle = np.sqrt(mean_squared_error(y_train_log, oof_stacking))
 print(f"  Stacking OOF RMSLE (Positive Constraints): {stacking_rmsle:.6f}")
 print(f"  Meta-model Non-Zero Coefficients: {meta_model.coef_.round(4)}")
 
-from scipy.optimize import minimize_scalar
-
 if best_ensemble_rmsle <= stacking_rmsle:
     print("✅ Constrained Weighted Average is the winning strategy!")
     oof_winning = oof_matrix @ best_weights
@@ -289,9 +312,9 @@ print("=" * 60)
 
 raw_y_train = pd.read_csv('./processed_data/y_train.csv').squeeze()
 
-def rmsle_dollars(y_true, y_pred):
-    y_true = np.maximum(y_true, 0)
-    y_pred = np.maximum(y_pred, 0)
+def rmsle_dollars(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    y_true = np.maximum(y_true, 0.0)
+    y_pred = np.maximum(y_pred, 0.0)
     return np.sqrt(mean_squared_error(np.log1p(y_true), np.log1p(y_pred)))
 
 # 1. Log-normal expectation correction: E[y] = exp(mu + sigma^2 / 2) - 1
@@ -310,7 +333,7 @@ print(f"  OOF Dollar RMSLE (Uncorrected expm1):       {rmsle_uncorrected:.6f}")
 print(f"  OOF Dollar RMSLE (Variance-Corrected):      {rmsle_var_corrected:.6f}")
 
 # 2. Optimal Scalar Multiplier Search (Constrained c >= 1.000 to offset underestimation penalty)
-def multiplier_loss(c):
+def multiplier_loss(c: float) -> float:
     preds = c * oof_pred_corrected_dollars
     return rmsle_dollars(raw_y_train, preds)
 

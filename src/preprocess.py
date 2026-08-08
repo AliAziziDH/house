@@ -3,6 +3,7 @@ Top 1% Target Preprocessing Engine for Kaggle House Prices (1,460 rows).
 Implements Ordinal Neighborhood Encoding, Quality-SF Interactions, and Age Metrics.
 """
 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -31,11 +32,13 @@ def preprocess_house_prices_data(data_dir: str = "./data") -> tuple:
     train = train[~((train['GrLivArea'] > 4000) & (train['SalePrice'] < 300000))].reset_index(drop=True)
     y_train_log = np.log1p(train['SalePrice'].values)
     
-    # 2. Ordinal Target Encoding for Neighborhood based on Median Price
-    neigh_order = train.groupby('Neighborhood')['SalePrice'].median().sort_values().index
+    # 2. Ordinal Target Encoding for Neighborhood based on Median Price per SF
+    train['TotalSF'] = train['TotalBsmtSF'] + train['1stFlrSF'] + train['2ndFlrSF']
+    train['PricePerSF'] = train['SalePrice'] / train['TotalSF']
+    neigh_order = train.groupby('Neighborhood')['PricePerSF'].median().sort_values().index
     neigh_map = {n: i + 1 for i, n in enumerate(neigh_order)}
     
-    X_train = train.drop(columns=['Id', 'SalePrice'])
+    X_train = train.drop(columns=['Id', 'SalePrice', 'TotalSF', 'PricePerSF'])
     X_test = test.drop(columns=['Id'])
     
     combined = pd.concat([X_train, X_test], ignore_index=True)
@@ -63,7 +66,9 @@ def preprocess_house_prices_data(data_dir: str = "./data") -> tuple:
     combined['TotalSF'] = combined['TotalBsmtSF'] + combined['1stFlrSF'] + combined['2ndFlrSF']
     combined['TotalBath'] = combined['FullBath'] + (0.5 * combined['HalfBath']) + combined['BsmtFullBath'] + (0.5 * combined['BsmtHalfBath'])
     combined['TotalPorch'] = combined['OpenPorchSF'] + combined['3SsnPorch'] + combined['EnclosedPorch'] + combined['ScreenPorch'] + combined['WoodDeckSF']
-    combined['Quality_SF_Score'] = combined['OverallQual'] * combined['TotalSF']
+
+    # [STRIPPED FOR REGULARIZATION] combined['Quality_SF_Score'] = combined['OverallQual'] * combined['TotalSF']
+
     combined['House_Age'] = (combined['YrSold'] - combined['YearBuilt']).clip(lower=0)
     combined['Remod_Age'] = (combined['YrSold'] - combined['YearRemodAdd']).clip(lower=0)
     combined['Is_New_House'] = (combined['YearBuilt'] == combined['YrSold']).astype(int)
@@ -75,11 +80,25 @@ def preprocess_house_prices_data(data_dir: str = "./data") -> tuple:
     for col in high_skew:
         combined[col] = np.log1p(combined[col])
         
+    # Extract Raw versions for CatBoost (before one-hot encoding)
+    X_train_raw = combined.iloc[:len(train)].copy()
+    X_test_raw = combined.iloc[len(train):].copy()
+
+    # One-hot encode for other models
     encoded = pd.get_dummies(combined, drop_first=True)
     
     X_train_proc = encoded.iloc[:len(train)].copy()
     X_test_proc = encoded.iloc[len(train):].copy()
     
+    # Save processed data to directory
+    os.makedirs("./processed_data", exist_ok=True)
+    X_train_proc.to_csv("./processed_data/X_train.csv", index=False)
+    X_test_proc.to_csv("./processed_data/X_test.csv", index=False)
+    X_train_raw.to_csv("./processed_data/X_train_raw.csv", index=False)
+    X_test_raw.to_csv("./processed_data/X_test_raw.csv", index=False)
+    pd.DataFrame({'SalePrice': train['SalePrice']}).to_csv("./processed_data/y_train.csv", index=False)
+    pd.DataFrame({'SalePrice': y_train_log}).to_csv("./processed_data/y_train_log.csv", index=False)
+
     print(f"✨ Top 1% Processed Shapes: X_train={X_train_proc.shape}, X_test={X_test_proc.shape}")
     return X_train_proc, X_test_proc, y_train_log, test['Id'].values
 

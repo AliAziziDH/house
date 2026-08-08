@@ -20,7 +20,7 @@ optuna.logging.set_verbosity(optuna.logging.WARNING)
 # ============================================
 RANDOM_STATE = 42
 N_FOLDS = 5
-N_TRIALS = 30
+N_TRIALS = 15  # Optimized for speed in the sandbox environment
 
 # ============================================
 # LOAD DATA (RAW VERSION FOR CATBOOST)
@@ -31,6 +31,11 @@ print("=" * 60)
 
 X_train_raw = pd.read_csv('./processed_data/X_train_raw.csv')
 y_train_log = pd.read_csv('./processed_data/y_train_log.csv').squeeze()
+
+# Load original raw train data to prevent target leakage in Neighborhood encoding
+raw_train = pd.read_csv('./data/train.csv')
+raw_train = raw_train[~((raw_train['GrLivArea'] > 4000) & (raw_train['SalePrice'] < 300000))].reset_index(drop=True)
+raw_neighborhoods = raw_train['Neighborhood']
 
 # Identify categorical features
 cat_features = X_train_raw.select_dtypes(include=['object']).columns.tolist()
@@ -48,12 +53,12 @@ print(f"Categorical features count: {len(cat_features)}")
 def objective(trial):
     params = {
         'loss_function': 'Huber:delta=1.0',
-        'depth': trial.suggest_int('depth', 3, 6),
+        'depth': trial.suggest_int('depth', 3, 4),  # Clamped to [3, 4] for low-variance generalization
         'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.2, log=True),
         'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1.0, 50.0, log=True),
         'subsample': trial.suggest_float('subsample', 0.5, 0.95),
         'random_strength': trial.suggest_float('random_strength', 1e-8, 10.0, log=True),
-        'iterations': 2000,
+        'iterations': 1000,  # Optimized for speed in the sandbox
         'random_seed': RANDOM_STATE,
         'verbose': False,
         'early_stopping_rounds': 50
@@ -67,6 +72,17 @@ def objective(trial):
         X_val_fold = X_train_raw.iloc[val_idx].copy()
         y_train_fold, y_val_fold = y_train_log.iloc[train_idx], y_train_log.iloc[val_idx]
         
+        # Leakage-Free Fold-by-Fold Neighborhood Target Rank Mapping
+        fold_raw_train = raw_train.iloc[train_idx].copy()
+        fold_raw_train['TotalSF'] = fold_raw_train['TotalBsmtSF'] + fold_raw_train['1stFlrSF'] + fold_raw_train['2ndFlrSF']
+        fold_raw_train['PricePerSF'] = fold_raw_train['SalePrice'] / fold_raw_train['TotalSF']
+
+        neigh_order = fold_raw_train.groupby('Neighborhood')['PricePerSF'].median().sort_values().index
+        neigh_map = {n: i + 1 for i, n in enumerate(neigh_order)}
+
+        X_train_fold['Neighborhood'] = raw_neighborhoods.iloc[train_idx].map(neigh_map).fillna(13).astype(int)
+        X_val_fold['Neighborhood'] = raw_neighborhoods.iloc[val_idx].map(neigh_map).fillna(13).astype(int)
+
         model = CatBoostRegressor(**params)
         model.fit(
             X_train_fold, y_train_fold,
@@ -113,13 +129,28 @@ print("=" * 60)
 
 final_params = best_params.copy()
 final_params.update({
-    'iterations': 2000,
+    'iterations': 1000,
     'random_seed': RANDOM_STATE,
     'verbose': False,
     'early_stopping_rounds': 50
 })
 
-X_tr, X_val, y_tr, y_val = train_test_split(X_train_raw, y_train_log, test_size=0.1, random_state=RANDOM_STATE)
+tr_idx, val_idx = train_test_split(np.arange(len(X_train_raw)), test_size=0.1, random_state=RANDOM_STATE)
+
+fold_raw_train = raw_train.iloc[tr_idx].copy()
+fold_raw_train['TotalSF'] = fold_raw_train['TotalBsmtSF'] + fold_raw_train['1stFlrSF'] + fold_raw_train['2ndFlrSF']
+fold_raw_train['PricePerSF'] = fold_raw_train['SalePrice'] / fold_raw_train['TotalSF']
+
+neigh_order = fold_raw_train.groupby('Neighborhood')['PricePerSF'].median().sort_values().index
+neigh_map = {n: i + 1 for i, n in enumerate(neigh_order)}
+
+X_tr = X_train_raw.iloc[tr_idx].copy()
+X_val = X_train_raw.iloc[val_idx].copy()
+y_tr = y_train_log.iloc[tr_idx]
+y_val = y_train_log.iloc[val_idx]
+
+X_tr['Neighborhood'] = raw_neighborhoods.iloc[tr_idx].map(neigh_map).fillna(13).astype(int)
+X_val['Neighborhood'] = raw_neighborhoods.iloc[val_idx].map(neigh_map).fillna(13).astype(int)
 
 best_model = CatBoostRegressor(**final_params)
 best_model.fit(
@@ -129,7 +160,10 @@ best_model.fit(
     verbose=False
 )
 
+# Save both original naming and best rmsle versions for compatibility
 joblib.dump(best_model, './models/catboost_best.pkl')
+joblib.dump(best_model, './models/catboost_best_rmsle.pkl')
+
 trials_df = study.trials_dataframe()
 trials_df.to_csv('./experiments/catboost_trials_log.csv', index=False)
 
