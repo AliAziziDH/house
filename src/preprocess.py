@@ -165,7 +165,7 @@ def preprocess_data(df, is_training=True):
             df[col] = df[col].map(mapping).fillna(0)
 
     # 9. One-hot encoding
-    nominal_cols = df.select_dtypes(include=["object"]).columns.tolist()
+    nominal_cols = df.select_dtypes(include=["object", "string"]).columns.tolist()
     if nominal_cols:
         df = pd.get_dummies(df, columns=nominal_cols, drop_first=True)
 
