@@ -3,14 +3,14 @@ Stacking with OOF (Out-of-Fold) Predictions
 This is a corrected implementation that prevents data leakage and uses proper cross-validation.
 """
 
-import pandas as pd
-import numpy as np
 import joblib
-from sklearn.model_selection import KFold
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_squared_error
+import numpy as np
+import pandas as pd
 import xgboost as xgb
 from catboost import CatBoostRegressor
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error
+from sklearn.model_selection import KFold
 
 # ============================================
 # CONFIGURATION
@@ -20,25 +20,25 @@ N_FOLDS = 5
 
 # Best parameters from previous optimizations
 best_params_xgb = {
-    'n_estimators': 700,
-    'max_depth': 5,
-    'learning_rate': 0.0186,
-    'subsample': 0.6136,
-    'colsample_bytree': 0.7310,
-    'min_child_weight': 2,
-    'random_state': RANDOM_STATE,
-    'verbosity': 0
+    "n_estimators": 700,
+    "max_depth": 5,
+    "learning_rate": 0.0186,
+    "subsample": 0.6136,
+    "colsample_bytree": 0.7310,
+    "min_child_weight": 2,
+    "random_state": RANDOM_STATE,
+    "verbosity": 0,
 }
 
 best_params_catboost = {
-    'iterations': 600,
-    'depth': 4,
-    'learning_rate': 0.094,
-    'l2_leaf_reg': 3.92,
-    'subsample': 0.96,
-    'colsample_bylevel': 0.63,
-    'random_seed': RANDOM_STATE,
-    'verbose': False
+    "iterations": 600,
+    "depth": 4,
+    "learning_rate": 0.094,
+    "l2_leaf_reg": 3.92,
+    "subsample": 0.96,
+    "colsample_bylevel": 0.63,
+    "random_seed": RANDOM_STATE,
+    "verbose": False,
 }
 
 # ============================================
@@ -48,17 +48,18 @@ print("=" * 60)
 print("LOADING DATA")
 print("=" * 60)
 
-X_train = pd.read_csv('./processed_data/X_train.csv')
-y_train = pd.read_csv('./processed_data/y_train.csv').squeeze()
-X_test = pd.read_csv('./processed_data/X_test.csv')
-test_ids = pd.read_csv('./data/test.csv')['Id']
+X_train = pd.read_csv("./processed_data/X_train.csv")
+y_train = pd.read_csv("./processed_data/y_train.csv").squeeze()
+X_test = pd.read_csv("./processed_data/X_test.csv")
+test_ids = pd.read_csv("./data/test.csv")["Id"]
 
 print(f"X_train shape: {X_train.shape}")
 print(f"X_test shape: {X_test.shape}")
 print(f"y_train shape: {y_train.shape}")
 
 # Load Box-Cox transformer for inverse transform
-pt = joblib.load('./models/boxcox_transformer.pkl')
+pt = joblib.load("./models/boxcox_transformer.pkl")
+
 
 # ============================================
 # RMSLE METRIC
@@ -68,6 +69,7 @@ def rmsle(y_true, y_pred):
     y_true = np.maximum(y_true, 0)
     y_pred = np.maximum(y_pred, 0)
     return np.sqrt(mean_squared_error(np.log1p(y_true), np.log1p(y_pred)))
+
 
 # ============================================
 # OOF PREDICTIONS
@@ -89,25 +91,25 @@ catboost_models = []
 print(f"Training {N_FOLDS} folds for each model...")
 
 for fold, (train_idx, val_idx) in enumerate(kf.split(X_train)):
-    print(f"\n  Fold {fold+1}/{N_FOLDS}")
-    
+    print(f"\n  Fold {fold + 1}/{N_FOLDS}")
+
     X_train_fold = X_train.iloc[train_idx]
     y_train_fold = y_train.iloc[train_idx]
     X_val_fold = X_train.iloc[val_idx]
     y_val_fold = y_train.iloc[val_idx]
-    
+
     # Train XGBoost
     xgb_model = xgb.XGBRegressor(**best_params_xgb)
     xgb_model.fit(X_train_fold, y_train_fold)
     xgb_oof[val_idx] = xgb_model.predict(X_val_fold)
     xgb_models.append(xgb_model)
-    
+
     # Train CatBoost
     cat_model = CatBoostRegressor(**best_params_catboost)
     cat_model.fit(X_train_fold, y_train_fold)
     cat_oof[val_idx] = cat_model.predict(X_val_fold)
     catboost_models.append(cat_model)
-    
+
     print(f"    XGBoost OOF RMSLE: {rmsle(y_val_fold, xgb_oof[val_idx]):.6f}")
     print(f"    CatBoost OOF RMSLE: {rmsle(y_val_fold, cat_oof[val_idx]):.6f}")
 
@@ -172,12 +174,9 @@ print("\n" + "=" * 60)
 print("CREATING SUBMISSION FILE")
 print("=" * 60)
 
-submission = pd.DataFrame({
-    'Id': test_ids,
-    'SalePrice': stacking_pred
-})
+submission = pd.DataFrame({"Id": test_ids, "SalePrice": stacking_pred})
 
-submission.to_csv('./submissions/submission_stacking_final.csv', index=False)
+submission.to_csv("./submissions/submission_stacking_final.csv", index=False)
 
 print("✅ Submission saved to ./submissions/submission_stacking_final.csv")
 print(f"   Shape: {submission.shape}")

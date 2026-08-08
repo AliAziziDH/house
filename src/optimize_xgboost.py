@@ -4,15 +4,16 @@ Uses RMSLE (Root Mean Squared Log Error) as the evaluation metric,
 which aligns with the competition's official metric.
 """
 
-import pandas as pd
+import os
+
+import joblib
 import numpy as np
 import optuna
+import pandas as pd
+from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import KFold
 from sklearn.preprocessing import PowerTransformer
 from xgboost import XGBRegressor
-from sklearn.metrics import mean_squared_error
-import joblib
-import os
 
 # ============================================
 # CONFIGURATION
@@ -20,6 +21,7 @@ import os
 RANDOM_STATE = 42
 N_FOLDS = 5
 N_TRIALS = 50
+
 
 # ============================================
 # RMSLE METRIC
@@ -33,6 +35,7 @@ def rmsle(y_true, y_pred):
     y_pred = np.maximum(y_pred, 0)
     return np.sqrt(mean_squared_error(np.log1p(y_true), np.log1p(y_pred)))
 
+
 # ============================================
 # LOAD DATA
 # ============================================
@@ -40,8 +43,8 @@ print("=" * 60)
 print("LOADING DATA")
 print("=" * 60)
 
-X_train = pd.read_csv('./processed_data/X_train.csv')
-y_train = pd.read_csv('./processed_data/y_train.csv').squeeze()
+X_train = pd.read_csv("./processed_data/X_train.csv")
+y_train = pd.read_csv("./processed_data/y_train.csv").squeeze()
 
 print(f"X_train shape: {X_train.shape}")
 print(f"y_train shape: {y_train.shape}")
@@ -53,9 +56,10 @@ print("\n" + "=" * 60)
 print("APPLYING BOX-COX TRANSFORMATION")
 print("=" * 60)
 
-pt = PowerTransformer(method='box-cox')
+pt = PowerTransformer(method="box-cox")
 y_transformed = pt.fit_transform(y_train.values.reshape(-1, 1)).flatten()
 print(f"Skewness after Box-Cox: {pd.Series(y_transformed).skew():.4f}")
+
 
 # ============================================
 # OPTUNA OBJECTIVE FUNCTION (with RMSLE)
@@ -66,43 +70,46 @@ def objective(trial):
     """
     # Suggest hyperparameters
     params = {
-        'n_estimators': trial.suggest_int('n_estimators', 100, 1000, step=100),
-        'max_depth': trial.suggest_int('max_depth', 3, 10),
-        'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3, log=True),
-        'subsample': trial.suggest_float('subsample', 0.6, 1.0),
-        'colsample_bytree': trial.suggest_float('colsample_bytree', 0.6, 1.0),
-        'min_child_weight': trial.suggest_int('min_child_weight', 1, 10),
-        'random_state': RANDOM_STATE,
-        'verbosity': 0
+        "n_estimators": trial.suggest_int("n_estimators", 100, 1000, step=100),
+        "max_depth": trial.suggest_int("max_depth", 3, 10),
+        "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
+        "subsample": trial.suggest_float("subsample", 0.6, 1.0),
+        "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
+        "min_child_weight": trial.suggest_int("min_child_weight", 1, 10),
+        "random_state": RANDOM_STATE,
+        "verbosity": 0,
     }
-    
+
     # Create model
     model = XGBRegressor(**params)
-    
+
     # Cross-validation
     kf = KFold(n_splits=N_FOLDS, shuffle=True, random_state=RANDOM_STATE)
     rmsle_scores = []
-    
+
     for train_idx, val_idx in kf.split(X_train):
         X_train_fold, X_val_fold = X_train.iloc[train_idx], X_train.iloc[val_idx]
         y_train_fold, y_val_fold = y_transformed[train_idx], y_transformed[val_idx]
-        
+
         # Train model on transformed target
         model.fit(X_train_fold, y_train_fold)
-        
+
         # Predict on validation fold
         y_pred_transformed = model.predict(X_val_fold)
-        
+
         # Inverse transform to original scale
-        y_pred_original = pt.inverse_transform(y_pred_transformed.reshape(-1, 1)).flatten()
+        y_pred_original = pt.inverse_transform(
+            y_pred_transformed.reshape(-1, 1)
+        ).flatten()
         y_val_original = pt.inverse_transform(y_val_fold.reshape(-1, 1)).flatten()
-        
+
         # Calculate RMSLE on original scale
         rmsle_score = rmsle(y_val_original, y_pred_original)
         rmsle_scores.append(rmsle_score)
-    
+
     avg_rmsle = np.mean(rmsle_scores)
     return avg_rmsle
+
 
 # ============================================
 # RUN OPTIMIZATION
@@ -112,15 +119,15 @@ print("STARTING OPTUNA OPTIMIZATION (RMSLE)")
 print("=" * 60)
 
 # Create directories
-os.makedirs('./experiments', exist_ok=True)
-os.makedirs('./models', exist_ok=True)
+os.makedirs("./experiments", exist_ok=True)
+os.makedirs("./models", exist_ok=True)
 
 # Create study
 study = optuna.create_study(
-    direction='minimize',
-    study_name='xgboost_optimization_rmsle',
-    storage=f'sqlite:///{os.path.abspath("./experiments/xgboost_study_rmsle.db")}',
-    load_if_exists=True
+    direction="minimize",
+    study_name="xgboost_optimization_rmsle",
+    storage=f"sqlite:///{os.path.abspath('./experiments/xgboost_study_rmsle.db')}",
+    load_if_exists=True,
 )
 
 study.optimize(objective, n_trials=N_TRIALS, show_progress_bar=True)
@@ -133,17 +140,17 @@ print("SAVING RESULTS")
 print("=" * 60)
 
 best_params = study.best_params
-best_params_no_rs = {k: v for k, v in best_params.items() if k != 'random_state'}
+best_params_no_rs = {k: v for k, v in best_params.items() if k != "random_state"}
 best_model = XGBRegressor(**best_params_no_rs, random_state=RANDOM_STATE, verbosity=0)
 best_model.fit(X_train, y_transformed)
 
 # Save model and transformer
-joblib.dump(best_model, './models/xgboost_best_rmsle.pkl')
-joblib.dump(pt, './models/boxcox_transformer.pkl')
+joblib.dump(best_model, "./models/xgboost_best_rmsle.pkl")
+joblib.dump(pt, "./models/boxcox_transformer.pkl")
 
 # Save all trial results
 trials_df = study.trials_dataframe()
-trials_df.to_csv('./experiments/xgboost_trials_rmsle.csv', index=False)
+trials_df.to_csv("./experiments/xgboost_trials_rmsle.csv", index=False)
 
 print(f"✅ Best RMSLE: {study.best_value:.6f}")
 print(f"✅ Best parameters: {best_params}")
@@ -157,20 +164,18 @@ print("\n" + "=" * 60)
 print("GENERATING SUBMISSION")
 print("=" * 60)
 
-X_test = pd.read_csv('./processed_data/X_test.csv')
-test_ids = pd.read_csv('./data/test.csv')['Id']
+X_test = pd.read_csv("./processed_data/X_test.csv")
+test_ids = pd.read_csv("./data/test.csv")["Id"]
 
 y_pred_transformed = best_model.predict(X_test)
 y_pred_original = pt.inverse_transform(y_pred_transformed.reshape(-1, 1)).flatten()
 
-submission = pd.DataFrame({
-    'Id': test_ids,
-    'SalePrice': y_pred_original
-})
+submission = pd.DataFrame({"Id": test_ids, "SalePrice": y_pred_original})
 import os
-os.makedirs('./submissions', exist_ok=True)
 
-submission.to_csv('./submissions/submission_xgboost_rmsle.csv', index=False)
+os.makedirs("./submissions", exist_ok=True)
+
+submission.to_csv("./submissions/submission_xgboost_rmsle.csv", index=False)
 
 print("✅ Submission saved to './submissions/submission_xgboost_rmsle.csv'")
 print(f"   Shape: {submission.shape}")
