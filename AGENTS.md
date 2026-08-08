@@ -125,3 +125,26 @@ A robust automated test suite is critical to preventing regressions across our p
   1. Ensure the pytest suite completes with **100% success**.
   2. If any test fails, diagnose the root cause immediately, fix the implementation, and rerun tests.
   3. Never commit unfinished or breaking test modifications to the main branch.
+
+---
+
+## 6. Automated Submissions with Kaggle API
+
+To automate submission upload and leaderboard fetching from a cloud VM or any CLI session, install and configure the Kaggle API package (`kaggle>=2.0.0`) securely.
+
+### Environment Variable Injection (Recommended)
+Set the following environment variables in your terminal session before executing any commands:
+```bash
+export KAGGLE_USERNAME="aliazizi1"
+export KAGGLE_API_TOKEN="KGAT_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+```
+
+### Automation Commands:
+Once authenticated, you can submit predictions and list results directly:
+```bash
+# Submit the final submission
+kaggle competitions submit -c house-prices-advanced-regression-techniques -f submission.csv -m "Jules Cloud VM: Leak-free SLSQP Stacking Ensemble"
+
+# Fetch latest leaderboard submissions and scores
+kaggle competitions submissions -c house-prices-advanced-regression-techniques
+```

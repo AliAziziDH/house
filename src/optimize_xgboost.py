@@ -20,7 +20,7 @@ optuna.logging.set_verbosity(optuna.logging.WARNING)
 # ============================================
 RANDOM_STATE = 42
 N_FOLDS = 5
-N_TRIALS = 30
+N_TRIALS = 15  # Optimized for fast execution in sandbox environments
 
 # ============================================
 # LOAD DATA
