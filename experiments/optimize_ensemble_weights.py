@@ -2,10 +2,9 @@
 Optimize ensemble weights using a simple grid search.
 """
 
-import pandas as pd
-import numpy as np
 import joblib
-from sklearn.preprocessing import PowerTransformer
+import numpy as np
+import pandas as pd
 
 # ============================================
 # LOAD MODELS AND DATA
@@ -14,12 +13,12 @@ print("=" * 60)
 print("LOADING MODELS AND DATA")
 print("=" * 60)
 
-X_test = pd.read_csv('./processed_data/X_test.csv')
-test_ids = pd.read_csv('./data/test.csv')['Id']
+X_test = pd.read_csv("./processed_data/X_test.csv")
+test_ids = pd.read_csv("./data/test.csv")["Id"]
 
-xgb_model = joblib.load('./models/xgboost_best_rmsle.pkl')
-catboost_model = joblib.load('./models/catboost_best_rmsle.pkl')
-pt = joblib.load('./models/boxcox_transformer.pkl')
+xgb_model = joblib.load("./models/xgboost_best_rmsle.pkl")
+catboost_model = joblib.load("./models/catboost_best_rmsle.pkl")
+pt = joblib.load("./models/boxcox_transformer.pkl")
 
 # ============================================
 # GENERATE PREDICTIONS
@@ -28,7 +27,9 @@ xgb_pred_transformed = xgb_model.predict(X_test)
 catboost_pred_transformed = catboost_model.predict(X_test)
 
 xgb_pred_original = pt.inverse_transform(xgb_pred_transformed.reshape(-1, 1)).flatten()
-catboost_pred_original = pt.inverse_transform(catboost_pred_transformed.reshape(-1, 1)).flatten()
+catboost_pred_original = pt.inverse_transform(
+    catboost_pred_transformed.reshape(-1, 1)
+).flatten()
 
 # ============================================
 # WEIGHT OPTIMIZATION USING GRID SEARCH
@@ -38,7 +39,7 @@ print("OPTIMIZING ENSEMBLE WEIGHTS")
 print("=" * 60)
 
 best_weight = 0.5
-best_score = float('inf')
+best_score = float("inf")
 
 # For this grid search, we need a validation set.
 # Since we don't have direct access to the public LB, we'll use cross-validation.
@@ -61,10 +62,7 @@ print("   Suggested weights to try: 0.64, 0.65, 0.66, 0.67")
 candidate_weights = [0.64, 0.65, 0.66, 0.67]
 for w in candidate_weights:
     ensemble_pred = w * xgb_pred_original + (1 - w) * catboost_pred_original
-    submission = pd.DataFrame({
-        'Id': test_ids,
-        'SalePrice': ensemble_pred
-    })
-    filename = f'submission_ensemble_w{w:.2f}.csv'
+    submission = pd.DataFrame({"Id": test_ids, "SalePrice": ensemble_pred})
+    filename = f"submission_ensemble_w{w:.2f}.csv"
     submission.to_csv(filename, index=False)
     print(f"✅ Saved {filename}")

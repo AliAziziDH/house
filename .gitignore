@@ -31,3 +31,4 @@ venv/
 notebooks/.ipynb_checkpoints/
 **/.ipynb_checkpoints/
 catboost_info/
+.aider*

@@ -1,0 +1,52 @@
+{
+  "name": "House Prices Kaggle Dev Sandbox",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  // Ensure we mount caches and the virtual environment as private named volumes.
+  // This bypassed slow macOS/Windows bind-mount I/O (the volume trick)
+  "mounts": [
+    {
+      "source": "uv-cache",
+      "target": "/root/.cache/uv",
+      "type": "volume"
+    },
+    {
+      "source": "house-prices-venv",
+      "target": "/workspaces/.venv",
+      "type": "volume"
+    }
+  ],
+  "containerEnv": {
+    "UV_LINK_MODE": "copy",
+    "UV_COMPILE_BYTECODE": "1"
+  },
+  // Auto-install dependencies immediately after the container starts using the locked cache volume
+  "postCreateCommand": "uv venv /workspaces/.venv && uv pip install -r requirements.txt",
+  "remoteUser": "root",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "charliermarsh.ruff",
+        "ms-toolsai.jupyter"
+      ],
+      "settings": {
+        // Point VS Code to the in-container virtual environment
+        "python.defaultInterpreterPath": "/workspaces/.venv/bin/python",
+        "python.terminal.activateEnvironment": true,
+        // Standardize formatting and linting via ruff on save
+        "ruff.enable": true,
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+          "source.organizeImports": "explicit"
+        },
+        "python.testing.pytestEnabled": true,
+        "python.testing.unittestEnabled": false,
+        "python.testing.pytestArgs": [
+          "tests"
+        ]
+      }
+    }
+  }
+}

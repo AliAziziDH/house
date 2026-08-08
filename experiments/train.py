@@ -1,15 +1,14 @@
-import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
+import pandas as pd
 import seaborn as sns
 
 # تنظیمات نمایش
-pd.set_option('display.max_columns', None)
-pd.set_option('display.max_rows', 100)
+pd.set_option("display.max_columns", None)
+pd.set_option("display.max_rows", 100)
 
 # بارگذاری داده
-train = pd.read_csv('./data/train.csv')
-test = pd.read_csv('./data/test.csv')
+train = pd.read_csv("./data/train.csv")
+test = pd.read_csv("./data/test.csv")
 
 print("=" * 60)
 print("HOUSE PRICES - DATA OVERVIEW")
@@ -36,15 +35,15 @@ print(f"Skewness: {train['SalePrice'].skew():.2f}")
 # توزیع هدف
 plt.figure(figsize=(12, 5))
 plt.subplot(1, 2, 1)
-sns.histplot(train['SalePrice'], bins=50, kde=True)
-plt.title('Distribution of SalePrice')
+sns.histplot(train["SalePrice"], bins=50, kde=True)
+plt.title("Distribution of SalePrice")
 
 plt.subplot(1, 2, 2)
-sns.boxplot(x=train['SalePrice'])
-plt.title('Boxplot of SalePrice')
+sns.boxplot(x=train["SalePrice"])
+plt.title("Boxplot of SalePrice")
 
 plt.tight_layout()
-plt.savefig('sale_price_distribution.png', dpi=150)
+plt.savefig("sale_price_distribution.png", dpi=150)
 plt.show()
 print("Saved: sale_price_distribution.png")
 
