@@ -9,8 +9,9 @@ import pandas as pd
 import xgboost as xgb
 from catboost import CatBoostRegressor
 from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import KFold
+
+from src.metrics import rmsle
 
 # ============================================
 # CONFIGURATION
@@ -59,16 +60,6 @@ print(f"y_train shape: {y_train.shape}")
 
 # Load Box-Cox transformer for inverse transform
 pt = joblib.load("./models/boxcox_transformer.pkl")
-
-
-# ============================================
-# RMSLE METRIC
-# ============================================
-def rmsle(y_true, y_pred):
-    """Root Mean Squared Log Error"""
-    y_true = np.maximum(y_true, 0)
-    y_pred = np.maximum(y_pred, 0)
-    return np.sqrt(mean_squared_error(np.log1p(y_true), np.log1p(y_pred)))
 
 
 # ============================================

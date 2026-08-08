@@ -6,17 +6,9 @@ import numpy as np
 import pandas as pd
 import xgboost as xgb
 from catboost import CatBoostRegressor
-from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import KFold
 
-
-# ============================================
-# RMSLE METRIC
-# ============================================
-def rmsle(y_true, y_pred):
-    y_true = np.maximum(y_true, 0)
-    y_pred = np.maximum(y_pred, 0)
-    return np.sqrt(mean_squared_error(np.log1p(y_true), np.log1p(y_pred)))
+from src.metrics import rmsle
 
 
 # ============================================

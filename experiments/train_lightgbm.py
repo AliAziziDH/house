@@ -9,9 +9,10 @@ import lightgbm as lgb
 import numpy as np
 import optuna
 import pandas as pd
-from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import KFold
 from sklearn.preprocessing import PowerTransformer
+
+from src.metrics import rmsle
 
 # ============================================
 # LOAD DATA
@@ -71,8 +72,8 @@ def objective(trial):
         y_pred_original = pt.inverse_transform(y_pred.reshape(-1, 1)).flatten()
         y_val_original = pt.inverse_transform(y_val_fold.reshape(-1, 1)).flatten()
 
-        rmse = np.sqrt(mean_squared_error(y_val_original, y_pred_original))
-        rmse_scores.append(rmse)
+        score = rmsle(y_val_original, y_pred_original)
+        rmse_scores.append(score)
 
     return np.mean(rmse_scores)
 

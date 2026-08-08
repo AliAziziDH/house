@@ -10,10 +10,11 @@ import joblib
 import numpy as np
 import optuna
 import pandas as pd
-from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import KFold
 from sklearn.preprocessing import PowerTransformer
 from xgboost import XGBRegressor
+
+from src.metrics import rmsle
 
 # ============================================
 # CONFIGURATION
@@ -21,19 +22,6 @@ from xgboost import XGBRegressor
 RANDOM_STATE = 42
 N_FOLDS = 5
 N_TRIALS = 50
-
-
-# ============================================
-# RMSLE METRIC
-# ============================================
-def rmsle(y_true, y_pred):
-    """
-    Root Mean Squared Log Error
-    This is the official metric for the House Prices competition.
-    """
-    y_true = np.maximum(y_true, 0)
-    y_pred = np.maximum(y_pred, 0)
-    return np.sqrt(mean_squared_error(np.log1p(y_true), np.log1p(y_pred)))
 
 
 # ============================================
