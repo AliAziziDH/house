@@ -9,6 +9,7 @@ import pandas as pd
 
 from src.models.base import save_oof_predictions
 from src.models.catboost_model import train_catboost_cv
+from src.models.linear_model import train_linear_cv
 from src.models.xgboost_model import train_xgboost_cv
 
 
@@ -18,7 +19,7 @@ def main():
         "--model",
         type=str,
         default="all",
-        choices=["xgboost", "catboost", "all"],
+        choices=["xgboost", "catboost", "linear", "all"],
         help="Model to train (default: all)",
     )
     args = parser.parse_args()
@@ -49,6 +50,12 @@ def main():
         cat_res = train_catboost_cv(X_raw, y_raw)
         print(f"CatBoost Overall OOF RMSLE: {cat_res['overall_rmsle']:.6f}")
         save_oof_predictions("catboost", cat_res["oof_preds"], train_ids)
+
+    if args.model in ["linear", "all"]:
+        print("\n--- Training Linear (Lasso) ---")
+        linear_res = train_linear_cv(X_raw, y_raw, model_type="lasso")
+        print(f"Linear (Lasso) Overall OOF RMSLE: {linear_res['overall_rmsle']:.6f}")
+        save_oof_predictions("linear", linear_res["oof_preds"], train_ids)
 
     print("\n" + "=" * 60)
     print("TRAINING RUN COMPLETE")
