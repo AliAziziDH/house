@@ -28,9 +28,10 @@ def diagnose():
     X_train_raw = train.drop(["Id", "SalePrice"], axis=1)
     X_test_raw = test.drop(["Id"], axis=1)
 
-    X_train = preprocess_data(X_train_raw, is_training=True)
-    X_test = preprocess_data(X_test_raw, is_training=False)
-    X_train, X_test = X_train.align(X_test, join="left", axis=1, fill_value=0)
+    transformer = AmesDataTransformer()
+    transformer.fit(X_train_raw, train["SalePrice"])
+    X_train = transformer.transform(X_train_raw)
+    X_test = transformer.transform(X_test_raw)
 
     print(f"Processed Train shape: {X_train.shape}")
     print(f"Processed Test shape:  {X_test.shape}")

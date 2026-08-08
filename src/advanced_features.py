@@ -1,22 +1,27 @@
-import featuretools as ft
+import os
+
 import pandas as pd
+from src.preprocess import AmesDataTransformer
 
-# Load data
-df = pd.read_csv("./data/train.csv")
 
-# Create entity set
-es = ft.EntitySet(id="house_prices")
-es = es.add_dataframe(dataframe_name="houses", dataframe=df, index="Id")
+def generate_advanced_features():
+    train_path = "./data/train.csv"
+    if not os.path.exists(train_path):
+        print("Data file not found.")
+        return
 
-# Deep feature synthesis (DFS)
-features, feature_defs = ft.dfs(
-    entityset=es,
-    target_dataframe_name="houses",
-    trans_primitives=["add", "multiply", "divide"],
-    agg_primitives=["mean", "sum", "std", "max", "min"],
-    max_depth=2,
-)
+    df = pd.read_csv(train_path)
+    y = df["SalePrice"] if "SalePrice" in df.columns else None
+    X = df.drop(columns=["Id", "SalePrice"], errors="ignore")
 
-# Save new features
-features.to_csv("./processed_data/advanced_features.csv", index=False)
-print("✅ Advanced features saved.")
+    transformer = AmesDataTransformer()
+    transformer.fit(X, y)
+    features = transformer.transform(X)
+
+    os.makedirs("./processed_data", exist_ok=True)
+    features.to_csv("./processed_data/advanced_features.csv", index=False)
+    print("✅ Advanced features saved.")
+
+
+if __name__ == "__main__":
+    generate_advanced_features()

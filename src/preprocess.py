@@ -2,174 +2,241 @@ import os
 
 import numpy as np
 import pandas as pd
+from sklearn.base import BaseEstimator, TransformerMixin
+
+
+class AmesDataTransformer(BaseEstimator, TransformerMixin):
+    """
+    Stateful Scikit-Learn transformer for Ames Housing data.
+    Fits all statistics (medians, modes, target ranks, one-hot schema) strictly on training data
+    and applies them without data leakage during transform.
+    """
+
+    def __init__(self):
+        self.lot_frontage_neighborhood_medians_ = {}
+        self.lot_frontage_global_median_ = 0.0
+        self.categorical_modes_ = {}
+        self.neighborhood_target_ranks_ = {}
+        self.global_neighborhood_rank_ = 0.0
+        self.feature_columns_ = []
+
+    def fit(self, X, y=None):
+        X = X.copy()
+
+        # 1. LotFrontage statistics
+        if "LotFrontage" in X.columns:
+            if "Neighborhood" in X.columns:
+                self.lot_frontage_neighborhood_medians_ = (
+                    X.groupby("Neighborhood")["LotFrontage"].median().to_dict()
+                )
+            med_val = X["LotFrontage"].median()
+            self.lot_frontage_global_median_ = float(med_val) if pd.notna(med_val) else 0.0
+
+        # 2. Categorical modes
+        cat_cols_with_missing = [
+            "Electrical",
+            "MSZoning",
+            "Utilities",
+            "Exterior1st",
+            "Exterior2nd",
+            "KitchenQual",
+            "Functional",
+            "SaleType",
+        ]
+        for col in cat_cols_with_missing:
+            if col in X.columns:
+                mode_val = X[col].mode()
+                if not mode_val.empty:
+                    self.categorical_modes_[col] = mode_val[0]
+
+        # 3. Neighborhood Target Ranking (if y is provided)
+        if y is not None and "Neighborhood" in X.columns:
+            df_target = pd.DataFrame({"Neighborhood": X["Neighborhood"], "Target": y})
+            neigh_medians = df_target.groupby("Neighborhood")["Target"].median()
+            neigh_ranks = neigh_medians.rank(method="min").to_dict()
+            self.neighborhood_target_ranks_ = neigh_ranks
+            self.global_neighborhood_rank_ = (
+                float(np.median(list(neigh_ranks.values()))) if neigh_ranks else 0.0
+            )
+
+        # 4. Transform training data to learn final column schema
+        X_trans = self._transform_df(X)
+        self.feature_columns_ = X_trans.columns.tolist()
+
+        return self
+
+    def _transform_df(self, df):
+        df = df.copy()
+
+        # 1. Garage features
+        garage_cat_cols = ["GarageType", "GarageFinish", "GarageQual", "GarageCond"]
+        for col in garage_cat_cols:
+            if col in df.columns:
+                df[col] = df[col].fillna("No Garage")
+
+        for col in ["GarageYrBlt", "GarageCars", "GarageArea"]:
+            if col in df.columns:
+                df[col] = df[col].fillna(0)
+
+        # 2. Basement features
+        bsmt_cat_cols = ["BsmtQual", "BsmtCond", "BsmtExposure", "BsmtFinType1", "BsmtFinType2"]
+        for col in bsmt_cat_cols:
+            if col in df.columns:
+                df[col] = df[col].fillna("No Basement")
+
+        bsmt_num_cols = ["BsmtFinSF1", "BsmtFinSF2", "BsmtUnfSF", "TotalBsmtSF"]
+        for col in bsmt_num_cols:
+            if col in df.columns:
+                df[col] = df[col].fillna(0)
+
+        # 3. Masonry veneer features
+        if "MasVnrType" in df.columns:
+            df["MasVnrType"] = df["MasVnrType"].fillna("None")
+        if "MasVnrArea" in df.columns:
+            df["MasVnrArea"] = df["MasVnrArea"].fillna(0)
+
+        # 4. Optional features
+        opt_cols = {
+            "Alley": "No Alley",
+            "PoolQC": "No Pool",
+            "Fence": "No Fence",
+            "FireplaceQu": "No Fireplace",
+            "MiscFeature": "None",
+        }
+        for col, val in opt_cols.items():
+            if col in df.columns:
+                df[col] = df[col].fillna(val)
+
+        # 5. LotFrontage imputation using fitted medians
+        if "LotFrontage" in df.columns:
+            if "Neighborhood" in df.columns and self.lot_frontage_neighborhood_medians_:
+                neigh_series = df["Neighborhood"].map(self.lot_frontage_neighborhood_medians_)
+                df["LotFrontage"] = df["LotFrontage"].fillna(neigh_series)
+            df["LotFrontage"] = df["LotFrontage"].fillna(self.lot_frontage_global_median_)
+
+        # 6. Categorical mode imputation using fitted modes
+        for col, mode_val in self.categorical_modes_.items():
+            if col in df.columns:
+                df[col] = df[col].fillna(mode_val)
+
+        bsmt_bath_cols = ["BsmtFullBath", "BsmtHalfBath"]
+        for col in bsmt_bath_cols:
+            if col in df.columns:
+                df[col] = df[col].fillna(0)
+
+        # 7. Feature engineering
+        if all(c in df.columns for c in ["TotalBsmtSF", "1stFlrSF", "2ndFlrSF"]):
+            df["TotalSF"] = df["TotalBsmtSF"] + df["1stFlrSF"] + df["2ndFlrSF"]
+
+        if all(c in df.columns for c in ["OpenPorchSF", "EnclosedPorch", "3SsnPorch", "ScreenPorch"]):
+            df["TotalPorchSF"] = (
+                df["OpenPorchSF"]
+                + df["EnclosedPorch"]
+                + df["3SsnPorch"]
+                + df["ScreenPorch"]
+            )
+
+        if all(c in df.columns for c in ["FullBath", "HalfBath", "BsmtFullBath", "BsmtHalfBath"]):
+            df["TotalBathrooms"] = (
+                df["FullBath"]
+                + 0.5 * df["HalfBath"]
+                + df["BsmtFullBath"]
+                + 0.5 * df["BsmtHalfBath"]
+            )
+
+        if all(c in df.columns for c in ["YrSold", "YearBuilt"]):
+            df["HouseAge"] = df["YrSold"] - df["YearBuilt"]
+            df["IsNew"] = (df["YearBuilt"] == df["YrSold"]).astype(int)
+
+        if all(c in df.columns for c in ["YrSold", "YearRemodAdd"]):
+            df["RemodAge"] = df["YrSold"] - df["YearRemodAdd"]
+
+        if all(c in df.columns for c in ["OverallQual", "OverallCond"]):
+            df["QualityScore"] = df["OverallQual"] * df["OverallCond"]
+
+        if all(c in df.columns for c in ["YrSold", "GarageYrBlt"]):
+            df["GarageAge"] = np.where(
+                df["GarageYrBlt"] == 0, 0, df["YrSold"] - df["GarageYrBlt"]
+            )
+
+        # Neighborhood Target Rank feature
+        if "Neighborhood" in df.columns and self.neighborhood_target_ranks_:
+            mapped_ranks = df["Neighborhood"].map(self.neighborhood_target_ranks_)
+            df["NeighborhoodTargetRank"] = mapped_ranks.fillna(self.global_neighborhood_rank_)
+
+        # 8. Ordinal encoding
+        quality_map = {"Po": 1, "Fa": 2, "TA": 3, "Gd": 4, "Ex": 5}
+        bsmt_qual_map = {"Po": 1, "Fa": 2, "TA": 3, "Gd": 4, "Ex": 5}
+        bsmt_exposure_map = {"No": 1, "Mn": 2, "Av": 3, "Gd": 4}
+        bsmt_fin_map = {"Unf": 1, "LwQ": 2, "Rec": 3, "BLQ": 4, "ALQ": 5, "GLQ": 6}
+        functional_map = {
+            "Sal": 1,
+            "Sev": 2,
+            "Maj2": 3,
+            "Maj1": 4,
+            "Mod": 5,
+            "Min2": 6,
+            "Min1": 7,
+            "Typ": 8,
+        }
+        lot_shape_map = {"IR3": 1, "IR2": 2, "IR1": 3, "Reg": 4}
+        land_contour_map = {"Low": 1, "Bnk": 2, "HLS": 3, "Lvl": 4}
+        utilities_map = {"NoSeWa": 1, "NoSewr": 2, "AllPub": 3}
+        land_slope_map = {"Sev": 1, "Mod": 2, "Gtl": 3}
+
+        ordinal_mappings = {
+            "ExterQual": quality_map,
+            "ExterCond": quality_map,
+            "BsmtQual": bsmt_qual_map,
+            "BsmtCond": bsmt_qual_map,
+            "HeatingQC": quality_map,
+            "KitchenQual": quality_map,
+            "FireplaceQu": quality_map,
+            "GarageQual": quality_map,
+            "GarageCond": quality_map,
+            "PoolQC": quality_map,
+            "BsmtExposure": bsmt_exposure_map,
+            "BsmtFinType1": bsmt_fin_map,
+            "BsmtFinType2": bsmt_fin_map,
+            "Functional": functional_map,
+            "LotShape": lot_shape_map,
+            "LandContour": land_contour_map,
+            "Utilities": utilities_map,
+            "LandSlope": land_slope_map,
+        }
+
+        for col, mapping in ordinal_mappings.items():
+            if col in df.columns:
+                df[col] = df[col].map(mapping).fillna(0)
+
+        # 9. One-hot encoding
+        nominal_cols = df.select_dtypes(include=["object", "string"]).columns.tolist()
+        if nominal_cols:
+            df = pd.get_dummies(df, columns=nominal_cols, drop_first=True)
+
+        return df
+
+    def transform(self, X):
+        X_trans = self._transform_df(X)
+        if self.feature_columns_:
+            X_trans = X_trans.reindex(columns=self.feature_columns_, fill_value=0)
+        return X_trans
+
 
 def preprocess_data(df, is_training=True):
-    """Preprocess DataFrame: fill missing values, engineer features, apply ordinal and one-hot encoding."""
-    df = df.copy()
+    """
+    Backward-compatible preprocessing function using stateful AmesDataTransformer.
+    """
+    transformer = AmesDataTransformer()
+    if "SalePrice" in df.columns:
+        y = df["SalePrice"]
+        X = df.drop(columns=["SalePrice"])
+    else:
+        y = None
+        X = df
 
-    # 1. Garage features
-    garage_cat_cols = ["GarageType", "GarageFinish", "GarageQual", "GarageCond"]
-    for col in garage_cat_cols:
-        if col in df.columns:
-            df[col] = df[col].fillna("No Garage")
-
-    for col in ["GarageYrBlt", "GarageCars", "GarageArea"]:
-        if col in df.columns:
-            df[col] = df[col].fillna(0)
-
-    # 2. Basement features
-    bsmt_cat_cols = ["BsmtQual", "BsmtCond", "BsmtExposure", "BsmtFinType1", "BsmtFinType2"]
-    for col in bsmt_cat_cols:
-        if col in df.columns:
-            df[col] = df[col].fillna("No Basement")
-
-    bsmt_num_cols = ["BsmtFinSF1", "BsmtFinSF2", "BsmtUnfSF", "TotalBsmtSF"]
-    for col in bsmt_num_cols:
-        if col in df.columns:
-            df[col] = df[col].fillna(0)
-
-    # 3. Masonry veneer features
-    if "MasVnrType" in df.columns:
-        df["MasVnrType"] = df["MasVnrType"].fillna("None")
-    if "MasVnrArea" in df.columns:
-        df["MasVnrArea"] = df["MasVnrArea"].fillna(0)
-
-    # 4. Optional features
-    opt_cols = {
-        "Alley": "No Alley",
-        "PoolQC": "No Pool",
-        "Fence": "No Fence",
-        "FireplaceQu": "No Fireplace",
-        "MiscFeature": "None",
-    }
-    for col, val in opt_cols.items():
-        if col in df.columns:
-            df[col] = df[col].fillna(val)
-
-    # 5. Few missing values
-    if "LotFrontage" in df.columns:
-        if "Neighborhood" in df.columns:
-            df["LotFrontage"] = df.groupby("Neighborhood")["LotFrontage"].transform(
-                lambda x: x.fillna(x.median())
-            )
-        median_val = df["LotFrontage"].median()
-        if pd.notna(median_val):
-            df["LotFrontage"] = df["LotFrontage"].fillna(median_val)
-        else:
-            df["LotFrontage"] = df["LotFrontage"].fillna(0)
-
-    if "Electrical" in df.columns:
-        mode_elec = df["Electrical"].mode()
-        if not mode_elec.empty:
-            df["Electrical"] = df["Electrical"].fillna(mode_elec[0])
-
-    # 6. Remaining missing values
-    cat_cols_with_missing = [
-        "MSZoning",
-        "Utilities",
-        "Exterior1st",
-        "Exterior2nd",
-        "KitchenQual",
-        "Functional",
-        "SaleType",
-    ]
-    for col in cat_cols_with_missing:
-        if col in df.columns:
-            mode_val = df[col].mode()
-            if not mode_val.empty:
-                df[col] = df[col].fillna(mode_val[0])
-
-    bsmt_bath_cols = ["BsmtFullBath", "BsmtHalfBath"]
-    for col in bsmt_bath_cols:
-        if col in df.columns:
-            df[col] = df[col].fillna(0)
-
-    # 7. Feature engineering
-    if all(c in df.columns for c in ["TotalBsmtSF", "1stFlrSF", "2ndFlrSF"]):
-        df["TotalSF"] = df["TotalBsmtSF"] + df["1stFlrSF"] + df["2ndFlrSF"]
-
-    if all(c in df.columns for c in ["OpenPorchSF", "EnclosedPorch", "3SsnPorch", "ScreenPorch"]):
-        df["TotalPorchSF"] = (
-            df["OpenPorchSF"]
-            + df["EnclosedPorch"]
-            + df["3SsnPorch"]
-            + df["ScreenPorch"]
-        )
-
-    if all(c in df.columns for c in ["FullBath", "HalfBath", "BsmtFullBath", "BsmtHalfBath"]):
-        df["TotalBathrooms"] = (
-            df["FullBath"]
-            + 0.5 * df["HalfBath"]
-            + df["BsmtFullBath"]
-            + 0.5 * df["BsmtHalfBath"]
-        )
-
-    if all(c in df.columns for c in ["YrSold", "YearBuilt"]):
-        df["HouseAge"] = df["YrSold"] - df["YearBuilt"]
-        df["IsNew"] = (df["YearBuilt"] == df["YrSold"]).astype(int)
-
-    if all(c in df.columns for c in ["YrSold", "YearRemodAdd"]):
-        df["RemodAge"] = df["YrSold"] - df["YearRemodAdd"]
-
-    if all(c in df.columns for c in ["OverallQual", "OverallCond"]):
-        df["QualityScore"] = df["OverallQual"] * df["OverallCond"]
-
-    if all(c in df.columns for c in ["YrSold", "GarageYrBlt"]):
-        df["GarageAge"] = np.where(
-            df["GarageYrBlt"] == 0, 0, df["YrSold"] - df["GarageYrBlt"]
-        )
-
-    # 8. Ordinal encoding
-    quality_map = {"Po": 1, "Fa": 2, "TA": 3, "Gd": 4, "Ex": 5}
-    bsmt_qual_map = {"Po": 1, "Fa": 2, "TA": 3, "Gd": 4, "Ex": 5}
-    bsmt_exposure_map = {"No": 1, "Mn": 2, "Av": 3, "Gd": 4}
-    bsmt_fin_map = {"Unf": 1, "LwQ": 2, "Rec": 3, "BLQ": 4, "ALQ": 5, "GLQ": 6}
-    functional_map = {
-        "Sal": 1,
-        "Sev": 2,
-        "Maj2": 3,
-        "Maj1": 4,
-        "Mod": 5,
-        "Min2": 6,
-        "Min1": 7,
-        "Typ": 8,
-    }
-    lot_shape_map = {"IR3": 1, "IR2": 2, "IR1": 3, "Reg": 4}
-    land_contour_map = {"Low": 1, "Bnk": 2, "HLS": 3, "Lvl": 4}
-    utilities_map = {"NoSeWa": 1, "NoSewr": 2, "AllPub": 3}
-    land_slope_map = {"Sev": 1, "Mod": 2, "Gtl": 3}
-
-    ordinal_mappings = {
-        "ExterQual": quality_map,
-        "ExterCond": quality_map,
-        "BsmtQual": bsmt_qual_map,
-        "BsmtCond": bsmt_qual_map,
-        "HeatingQC": quality_map,
-        "KitchenQual": quality_map,
-        "FireplaceQu": quality_map,
-        "GarageQual": quality_map,
-        "GarageCond": quality_map,
-        "PoolQC": quality_map,
-        "BsmtExposure": bsmt_exposure_map,
-        "BsmtFinType1": bsmt_fin_map,
-        "BsmtFinType2": bsmt_fin_map,
-        "Functional": functional_map,
-        "LotShape": lot_shape_map,
-        "LandContour": land_contour_map,
-        "Utilities": utilities_map,
-        "LandSlope": land_slope_map,
-    }
-
-    for col, mapping in ordinal_mappings.items():
-        if col in df.columns:
-            df[col] = df[col].map(mapping).fillna(0)
-
-    # 9. One-hot encoding
-    nominal_cols = df.select_dtypes(include=["object", "string"]).columns.tolist()
-    if nominal_cols:
-        df = pd.get_dummies(df, columns=nominal_cols, drop_first=True)
-
-    return df
+    transformer.fit(X, y)
+    return transformer.transform(X)
 
 
 if __name__ == "__main__":
@@ -187,9 +254,11 @@ if __name__ == "__main__":
     X_train_df = train.drop(["Id", "SalePrice"], axis=1)
     X_test_df = test.drop(["Id"], axis=1)
 
-    X_train = preprocess_data(X_train_df, is_training=True)
-    X_test = preprocess_data(X_test_df, is_training=False)
-    X_train, X_test = X_train.align(X_test, join="left", axis=1, fill_value=0)
+    transformer = AmesDataTransformer()
+    transformer.fit(X_train_df, y_train)
+
+    X_train = transformer.transform(X_train_df)
+    X_test = transformer.transform(X_test_df)
 
     os.makedirs("./processed_data", exist_ok=True)
     X_train.to_csv("./processed_data/X_train.csv", index=False)

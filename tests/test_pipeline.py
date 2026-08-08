@@ -2,7 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 
-from src.preprocess import preprocess_data
+from src.preprocess import AmesDataTransformer, preprocess_data
 
 
 def test_data_ingestion():
@@ -30,3 +30,40 @@ def test_preprocessing_transforms():
     assert pd.api.types.is_numeric_dtype(processed_df["KitchenQual"]), "KitchenQual was not converted to a numeric type!"
     assert processed_df["ExterQual"].iloc[0] == 5
     assert processed_df["ExterQual"].iloc[1] == 3
+
+
+def test_stateful_transformer_leak_free():
+    train_data = pd.DataFrame({
+        "Id": [1, 2, 3],
+        "LotFrontage": [65.0, np.nan, 80.0],
+        "ExterQual": ["Ex", "TA", "Gd"],
+        "KitchenQual": ["Gd", "Fa", "TA"],
+        "Neighborhood": ["CollgCr", "CollgCr", "Veenker"],
+        "Electrical": ["SBrkr", "SBrkr", np.nan]
+    })
+    y_train = pd.Series([200000, 150000, 300000])
+
+    test_data = pd.DataFrame({
+        "Id": [4, 5],
+        "LotFrontage": [np.nan, 70.0],
+        "ExterQual": ["Gd", "Fa"],
+        "KitchenQual": ["Ex", "TA"],
+        "Neighborhood": ["UnseenNeigh", "Veenker"],
+        "Electrical": [np.nan, "FuseA"]
+    })
+
+    transformer = AmesDataTransformer()
+    transformer.fit(train_data, y_train)
+
+    train_trans = transformer.transform(train_data)
+    test_trans = transformer.transform(test_data)
+
+    # Columns must match exactly between train and test
+    assert list(train_trans.columns) == list(test_trans.columns)
+
+    # Check missing LotFrontage filled using fitted training statistics
+    assert not test_trans["LotFrontage"].isna().any()
+
+    # Check unseen neighborhood handled gracefully
+    assert "NeighborhoodTargetRank" in test_trans.columns
+    assert not test_trans["NeighborhoodTargetRank"].isna().any()
