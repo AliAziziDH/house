@@ -101,8 +101,9 @@ def preprocess_house_prices_data(data_dir: str = "./data") -> tuple:
         combined[col] = combined[col].fillna("None")
 
     num_cols = [c for c in combined.select_dtypes(include=[np.number]).columns]
+    medians = combined[num_cols].median()
     for col in num_cols:
-        combined[col] = combined[col].fillna(combined[col].median())
+        combined[col] = combined[col].fillna(medians[col])
 
     # 5. High-Impact Interaction & Age Features
     combined["TotalSF"] = (
