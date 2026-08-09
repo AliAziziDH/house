@@ -155,9 +155,9 @@ if len(preds_dict) > 1:
     print("Correlation between individual model test predictions:")
     print(preds_df.corr().round(5))
     print("\nMean absolute percentage difference with Final Ensemble:")
-    for name in preds_dict:
+    for name, value in preds_dict.items():
         if name != 'Final Ensemble':
-            mape = np.mean(np.abs(preds_dict[name] - preds_dict['Final Ensemble']) / preds_dict['Final Ensemble']) * 100
+            mape = np.mean(np.abs(value - preds_dict['Final Ensemble']) / preds_dict['Final Ensemble']) * 100
             print(f"  {name:15s} vs Final Ensemble: {mape:.2f}%")
 
 print("\n" + "=" * 70)
