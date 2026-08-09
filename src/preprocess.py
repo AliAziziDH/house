@@ -38,16 +38,6 @@ def preprocess_house_prices_data(data_dir: str = "./data") -> tuple:
     train_path = dir_path / "train.csv"
     test_path = dir_path / "test.csv"
 
-    if not train_path.exists():
-        alt_path = Path(
-            "/Users/out/.gemini/antigravity/scratch/house-prices-kaggle/data/train.csv"
-        )
-        if alt_path.exists():
-            train_path = alt_path
-            test_path = Path(
-                "/Users/out/.gemini/antigravity/scratch/house-prices-kaggle/data/test.csv"
-            )
-
     train = pd.read_csv(train_path)
     test = pd.read_csv(test_path)
 
@@ -107,8 +97,9 @@ def preprocess_house_prices_data(data_dir: str = "./data") -> tuple:
         combined[col] = combined[col].fillna("None")
 
     num_cols = [c for c in combined.select_dtypes(include=[np.number]).columns]
+    medians = combined[num_cols].median()
     for col in num_cols:
-        combined[col] = combined[col].fillna(combined[col].median())
+        combined[col] = combined[col].fillna(medians[col])
 
     # 5. High-Impact Interaction & Age Features
     combined["TotalSF"] = (
