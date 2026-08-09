@@ -50,9 +50,8 @@ raw_train = raw_train[
 raw_neighborhoods = raw_train["Neighborhood"]
 
 cat_features = X_train_raw.select_dtypes(include=["object"]).columns.tolist()
-for col in cat_features:
-    X_train_raw[col] = X_train_raw[col].fillna("Missing").astype(str)
-    X_test_raw[col] = X_test_raw[col].fillna("Missing").astype(str)
+X_train_raw[cat_features] = X_train_raw[cat_features].fillna("Missing").astype(str)
+X_test_raw[cat_features] = X_test_raw[cat_features].fillna("Missing").astype(str)
 
 test_ids = pd.read_csv("./data/test.csv")["Id"]
 
