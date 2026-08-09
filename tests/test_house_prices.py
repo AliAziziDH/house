@@ -19,7 +19,7 @@ def test_quality_mapping_values():
 
 def test_preprocess_data_shapes(tmp_path):
     """Verify data preprocessing pipeline outputs valid non-null datasets."""
-    data_dir = "./data"
+    data_dir = "data"
     X_tr, X_te, y_tr, test_ids = preprocess_house_prices_data(data_dir)
     assert len(X_tr) == 1458 # 1460 - 2 outliers
     assert len(X_te) == 1459

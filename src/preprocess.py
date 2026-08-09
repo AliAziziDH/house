@@ -38,6 +38,12 @@ def preprocess_house_prices_data(data_dir: str = "./data") -> tuple:
     train_path = dir_path / "train.csv"
     test_path = dir_path / "test.csv"
 
+    if not train_path.exists():
+        alt_path = Path("data/train.csv")
+        if alt_path.exists():
+            train_path = alt_path
+            test_path = Path("data/test.csv")
+
     train = pd.read_csv(train_path)
     test = pd.read_csv(test_path)
 
@@ -76,19 +82,17 @@ def preprocess_house_prices_data(data_dir: str = "./data") -> tuple:
         "GarageCond",
         "PoolQC",
     ]
-    for col in ord_cols:
-        combined[col] = (
-            combined[col].fillna("None").map(QUALITY_MAP).fillna(0).astype(int)
-        )
+    combined[ord_cols] = combined[ord_cols].apply(
+        lambda x: x.map(QUALITY_MAP).fillna(0).astype(int)
+    )
 
-    combined["BsmtFinType1"] = (
-        combined["BsmtFinType1"].fillna("None").map(BSMT_FIN_MAP).fillna(0).astype(int)
+    bsmt_fin_cols = ["BsmtFinType1", "BsmtFinType2"]
+    combined[bsmt_fin_cols] = combined[bsmt_fin_cols].apply(
+        lambda x: x.map(BSMT_FIN_MAP).fillna(0).astype(int)
     )
-    combined["BsmtFinType2"] = (
-        combined["BsmtFinType2"].fillna("None").map(BSMT_FIN_MAP).fillna(0).astype(int)
-    )
+
     combined["BsmtExposure"] = (
-        combined["BsmtExposure"].fillna("None").map(EXPOSURE_MAP).fillna(0).astype(int)
+        combined["BsmtExposure"].map(EXPOSURE_MAP).fillna(0).astype(int)
     )
 
     # 4. Handle Categoricals & Numeric Imputation
