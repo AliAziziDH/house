@@ -96,14 +96,13 @@ def preprocess_house_prices_data(data_dir: str = "./data") -> tuple:
     )
 
     # 4. Handle Categoricals & Numeric Imputation
-    cat_cols = [c for c in combined.select_dtypes(include=["object"]).columns]
-    for col in cat_cols:
-        combined[col] = combined[col].fillna("None")
+    cat_cols = combined.select_dtypes(include=["object"]).columns
+    if len(cat_cols) > 0:
+        combined[cat_cols] = combined[cat_cols].fillna("None")
 
-    num_cols = [c for c in combined.select_dtypes(include=[np.number]).columns]
-    medians = combined[num_cols].median()
-    for col in num_cols:
-        combined[col] = combined[col].fillna(medians[col])
+    num_cols = combined.select_dtypes(include=[np.number]).columns
+    if len(num_cols) > 0:
+        combined[num_cols] = combined[num_cols].fillna(combined[num_cols].median())
 
     # 5. High-Impact Interaction & Age Features
     combined["TotalSF"] = (
