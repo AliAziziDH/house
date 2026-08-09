@@ -6,10 +6,9 @@ from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
-import pytest
-
-from src.preprocess import QUALITY_MAP, preprocess_house_prices_data
-
+from pathlib import Path
+from src.preprocess import preprocess_house_prices_data, QUALITY_MAP
+from src.find_ensemble_weights import rmsle_dollars
 
 def test_quality_mapping_values():
     """Verify Ordinal Quality Map values."""
@@ -52,21 +51,38 @@ def create_mock_data():
 @patch("pandas.read_csv")
 def test_preprocess_data_shapes(mock_read_csv, mock_to_csv, mock_makedirs):
     """Verify data preprocessing pipeline outputs valid non-null datasets."""
-    train_df, test_df = create_mock_data()
-
-    def side_effect(path_or_buf, *args, **kwargs):
-        if "train.csv" in str(path_or_buf):
-            return train_df.copy()
-        elif "test.csv" in str(path_or_buf):
-            return test_df.copy()
-        raise ValueError(f"Unexpected path: {path_or_buf}")
-
-    mock_read_csv.side_effect = side_effect
-
-    data_dir = "./dummy_dir"
-    X_tr, X_te, _y_tr, _test_ids = preprocess_house_prices_data(data_dir)
+    data_dir = "./data"
+    X_tr, X_te, y_tr, test_ids = preprocess_house_prices_data(data_dir)
     assert len(X_tr) == 1458 # 1460 - 2 outliers
     assert len(X_te) == 1459
+
+
+def test_rmsle_dollars_perfect_match():
+    """Verify exact match returns RMSLE of 0."""
+    y_true = np.array([100.0, 200.0, 300.0])
+    y_pred = np.array([100.0, 200.0, 300.0])
+    assert np.isclose(rmsle_dollars(y_true, y_pred), 0.0)
+
+def test_rmsle_dollars_negative_clamping():
+    """Verify negative values are correctly clamped to 0.0."""
+    y_true = np.array([0.0, 5.0])
+    y_pred = np.array([-10.0, 5.0])
+    # -10 gets clamped to 0.0. RMSLE should be 0 since both arrays effectively become [0.0, 5.0]
+    assert np.isclose(rmsle_dollars(y_true, y_pred), 0.0)
+
+def test_rmsle_dollars_known_values():
+    """Verify RMSLE calculation yields expected mathematical results."""
+    # log1p(e-1) = 1, log1p(0) = 0
+    y_true = np.array([np.exp(1) - 1])
+    y_pred = np.array([0.0])
+    # log difference is 1 - 0 = 1, squared is 1, mean is 1, sqrt is 1
+    assert np.isclose(rmsle_dollars(y_true, y_pred), 1.0)
+
+def test_rmsle_dollars_zero_values():
+    """Verify behavior when both inputs are exactly zero."""
+    y_true = np.array([0.0, 0.0])
+    y_pred = np.array([0.0, 0.0])
+    assert np.isclose(rmsle_dollars(y_true, y_pred), 0.0)
 
 if __name__ == '__main__':
     pytest.main(['-v', __file__])
