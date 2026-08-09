@@ -14,6 +14,7 @@ import pandas as pd
 from catboost import CatBoostRegressor
 from scipy.optimize import minimize, minimize_scalar
 from sklearn.linear_model import ElasticNetCV, LassoCV, Ridge
+from sklearn.base import clone
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import KFold
 from sklearn.pipeline import make_pipeline
