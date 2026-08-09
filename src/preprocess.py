@@ -38,11 +38,10 @@ def preprocess_house_prices_data(data_dir: str = "./data") -> tuple:
     train_path = dir_path / "train.csv"
     test_path = dir_path / "test.csv"
 
-    if not train_path.exists():
-        alt_path = Path("data/train.csv")
-        if alt_path.exists():
-            train_path = alt_path
-            test_path = Path("data/test.csv")
+    if not train_path.exists() or not test_path.exists():
+        raise FileNotFoundError(
+            f"Missing required data files in {data_dir}. Ensure 'train.csv' and 'test.csv' are present."
+        )
 
     train = pd.read_csv(train_path)
     test = pd.read_csv(test_path)
