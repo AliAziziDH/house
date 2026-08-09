@@ -38,11 +38,6 @@ def preprocess_house_prices_data(data_dir: str = "./data") -> tuple:
     train_path = dir_path / "train.csv"
     test_path = dir_path / "test.csv"
 
-    if not train_path.exists():
-        raise FileNotFoundError(f"Training data not found at {train_path}")
-    if not test_path.exists():
-        raise FileNotFoundError(f"Test data not found at {test_path}")
-
     train = pd.read_csv(train_path)
     test = pd.read_csv(test_path)
 
@@ -102,8 +97,9 @@ def preprocess_house_prices_data(data_dir: str = "./data") -> tuple:
         combined[col] = combined[col].fillna("None")
 
     num_cols = [c for c in combined.select_dtypes(include=[np.number]).columns]
+    medians = combined[num_cols].median()
     for col in num_cols:
-        combined[col] = combined[col].fillna(combined[col].median())
+        combined[col] = combined[col].fillna(medians[col])
 
     # 5. High-Impact Interaction & Age Features
     combined["TotalSF"] = (
