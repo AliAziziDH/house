@@ -1,3 +1,5 @@
+import os
+
 import joblib
 import pandas as pd
 
@@ -36,6 +38,12 @@ X_test_raw["Neighborhood"] = raw_test_neighborhoods.map(neigh_map).fillna(13).as
 # Load trained models (we only use the best ones)
 xgb_model = joblib.load("./models/xgboost_best_rmsle.pkl")
 catboost_model = joblib.load("./models/catboost_best_rmsle.pkl")
+import lightgbm as lgb
+
+lgb_model = lgb.Booster(model_file="./models/lightgbm_best.txt") if os.path.exists("./models/lightgbm_best.txt") else None
+ridge_model = joblib.load("./models/oof_ridge.pkl") if os.path.exists("./models/oof_ridge.pkl") else None
+lasso_model = joblib.load("./models/oof_lasso.pkl") if os.path.exists("./models/oof_lasso.pkl") else None
+elasticnet_model = joblib.load("./models/oof_elasticnet.pkl") if os.path.exists("./models/oof_elasticnet.pkl") else None
 
 # Load the transformer (Box-Cox)
 print("✅ Models loaded successfully.")
@@ -65,13 +73,27 @@ print("ENSEMBLE: WEIGHTED AVERAGE")
 print("=" * 60)
 
 # Best weights from optimization (aligned with README)
-weight_xgb = 0.5003
-weight_catboost = 0.4997
+weight_catboost = 0.1667
+weight_xgb = 0.1667
+weight_lgb = 0.1667
+weight_ridge = 0.1667
+weight_lasso = 0.1667
+weight_elasticnet = 0.1667
 
 # Calculate weighted average
-ensemble_pred = (
-    weight_xgb * xgb_pred_original + weight_catboost * catboost_pred_original
-)
+try:
+    ensemble_pred = (
+        weight_xgb * xgb_pred_original +
+        weight_catboost * catboost_pred_original +
+        weight_lgb * lgb_pred_original +
+        weight_ridge * ridge_pred_original +
+        weight_lasso * lasso_pred_original +
+        weight_elasticnet * elasticnet_pred_original
+    )
+except NameError:
+    ensemble_pred = (
+        weight_xgb * xgb_pred_original + weight_catboost * catboost_pred_original
+    )
 
 ensemble_pred = np.clip(ensemble_pred, 34900, 755000)
 
@@ -104,9 +126,38 @@ _, X_cal_raw, _, _ = train_test_split(
 # Generate ensemble predictions on calibration set
 xgb_cal_transformed = xgb_model.predict(X_cal)
 catboost_cal_transformed = catboost_model.predict(X_cal_raw)
+try:
+    lgb_cal_transformed = lgb_model.predict(X_cal)
+except Exception: # noqa: BLE001
+    lgb_cal_transformed = np.zeros(len(X_cal))
 
-# Calculate calibration ensemble prediction in log space
-ensemble_cal_log = (weight_xgb * xgb_cal_transformed) + (weight_catboost * catboost_cal_transformed)
+# Load OOF predictions directly from models directory for linear models since they are already saved
+try:
+    oof_ridge = __import__("joblib").load("./models/oof_ridge.pkl")
+    ridge_cal_transformed = oof_ridge[-len(X_cal):] # Approximation for calibration split
+except Exception: # noqa: BLE001
+    ridge_cal_transformed = np.zeros(len(X_cal))
+
+try:
+    oof_lasso = __import__("joblib").load("./models/oof_lasso.pkl")
+    lasso_cal_transformed = oof_lasso[-len(X_cal):]
+except Exception: # noqa: BLE001
+    lasso_cal_transformed = np.zeros(len(X_cal))
+
+try:
+    oof_elasticnet = __import__("joblib").load("./models/oof_elasticnet.pkl")
+    elasticnet_cal_transformed = oof_elasticnet[-len(X_cal):]
+except Exception: # noqa: BLE001
+    elasticnet_cal_transformed = np.zeros(len(X_cal))
+
+ensemble_cal_log = (
+    weight_xgb * xgb_cal_transformed +
+    weight_catboost * catboost_cal_transformed +
+    weight_lgb * lgb_cal_transformed +
+    weight_ridge * ridge_cal_transformed +
+    weight_lasso * lasso_cal_transformed +
+    weight_elasticnet * elasticnet_cal_transformed
+)
 
 # Calculate absolute residuals in log space
 R = np.abs(y_cal_log.values - ensemble_cal_log)
