@@ -91,8 +91,10 @@ try:
         weight_elasticnet * elasticnet_pred_original
     )
 except NameError:
+    # Normalize weights to sum to 1.0
+    total = weight_xgb + weight_catboost
     ensemble_pred = (
-        weight_xgb * xgb_pred_original + weight_catboost * catboost_pred_original
+        (weight_xgb / total) * xgb_pred_original + (weight_catboost / total) * catboost_pred_original
     )
 
 ensemble_pred = np.clip(ensemble_pred, 34900, 755000)

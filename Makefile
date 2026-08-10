@@ -23,6 +23,9 @@ make_submissions:
 	# (a) Leaderboard weights: XGB 0.1667, CAT 0.1665
 	python src/ensemble.py
 
+dashboard:
+	streamlit run src/portfolio_dashboard.py
+
 recommend_portfolio:
 	python src/recommend_portfolio.py
 
