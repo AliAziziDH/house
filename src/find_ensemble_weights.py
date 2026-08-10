@@ -13,12 +13,12 @@ import optuna
 import pandas as pd
 from catboost import CatBoostRegressor
 from scipy.optimize import minimize, minimize_scalar
+from sklearn.compose import TransformedTargetRegressor
 from sklearn.linear_model import ElasticNetCV, LassoCV, Ridge
-from sklearn.base import clone
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import KFold
 from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import RobustScaler, StandardScaler
+from sklearn.preprocessing import QuantileTransformer, RobustScaler, StandardScaler
 from xgboost import XGBRegressor
 
 warnings.filterwarnings("ignore")
@@ -284,23 +284,31 @@ def main():
         oof_lgb[val_idx] = model_lgb.predict(X_va)
         test_preds_lgb += model_lgb.predict(X_te_fold) / N_FOLDS
 
-        # 4. Ridge Regression (scaled cleanly inside fold)
-        model_ridge = Ridge(alpha=15.0, random_state=RANDOM_STATE)
+        # 4. Ridge Regression (scaled cleanly inside fold) with TransformedTargetRegressor
+        base_ridge = Ridge(alpha=15.0, random_state=RANDOM_STATE)
+        model_ridge = TransformedTargetRegressor(
+            regressor=base_ridge,
+            transformer=QuantileTransformer(n_quantiles=900, output_distribution='normal', random_state=42)
+        )
         model_ridge.fit(X_tr_sc, y_tr)
         oof_ridge[val_idx] = model_ridge.predict(X_va_sc)
         test_preds_ridge += model_ridge.predict(X_te_sc_fold) / N_FOLDS
 
-        # 5. Lasso Regression (with RobustScaler inside fold)
-        model_lasso = make_pipeline(
+        # 5. Lasso Regression (with RobustScaler inside fold) with TransformedTargetRegressor
+        base_lasso = make_pipeline(
             RobustScaler(),
             LassoCV(alphas=alphas_lasso, cv=5, random_state=RANDOM_STATE, max_iter=10000),
+        )
+        model_lasso = TransformedTargetRegressor(
+            regressor=base_lasso,
+            transformer=QuantileTransformer(n_quantiles=900, output_distribution='normal', random_state=42)
         )
         model_lasso.fit(X_tr, y_tr)
         oof_lasso[val_idx] = model_lasso.predict(X_va)
         test_preds_lasso += model_lasso.predict(X_te_fold) / N_FOLDS
 
-        # 6. ElasticNet Regression (with RobustScaler inside fold)
-        model_elasticnet = make_pipeline(
+        # 6. ElasticNet Regression (with RobustScaler inside fold) with TransformedTargetRegressor
+        base_elasticnet = make_pipeline(
             RobustScaler(),
             ElasticNetCV(
                 alphas=alphas_elasticnet,
@@ -309,6 +317,10 @@ def main():
                 random_state=RANDOM_STATE,
                 max_iter=10000,
             ),
+        )
+        model_elasticnet = TransformedTargetRegressor(
+            regressor=base_elasticnet,
+            transformer=QuantileTransformer(n_quantiles=900, output_distribution='normal', random_state=42)
         )
         model_elasticnet.fit(X_tr, y_tr)
         oof_elasticnet[val_idx] = model_elasticnet.predict(X_va)
@@ -366,8 +378,8 @@ def main():
 
 
     init_weights: list[float] = [1.0 / 6.0] * 6
-    bounds: list[tuple[float, float]] = [(0.0, 1.0)] * 6
-    constraints: dict[str, Any] = {"type": "eq", "fun": lambda w: 1.0 - np.sum(w)}
+    bounds: list[tuple[float, float | None]] = [(0.0, None)] * 6
+    constraints: list[dict[str, Any]] = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
 
     res = minimize(
         loss_func, init_weights, method="SLSQP", bounds=bounds, constraints=constraints

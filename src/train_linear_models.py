@@ -9,11 +9,12 @@ import os
 import joblib
 import numpy as np
 import pandas as pd
+from sklearn.compose import TransformedTargetRegressor
 from sklearn.linear_model import ElasticNetCV, LassoCV
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import KFold
 from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import RobustScaler
+from sklearn.preprocessing import QuantileTransformer, RobustScaler
 
 # ============================================
 # CONFIGURATION
@@ -96,19 +97,23 @@ def main():
             raw_neighborhoods.iloc[val_idx].map(neigh_map).fillna(13).astype(int)
         )
 
-        # 1. Lasso Pipeline
-        model_lasso = make_pipeline(
+        # 1. Lasso Pipeline with TransformedTargetRegressor
+        base_lasso = make_pipeline(
             RobustScaler(),
             LassoCV(
                 alphas=alphas_lasso, cv=5, random_state=RANDOM_STATE, max_iter=10000
             ),
         )
+        model_lasso = TransformedTargetRegressor(
+            regressor=base_lasso,
+            transformer=QuantileTransformer(n_quantiles=900, output_distribution='normal', random_state=42)
+        )
         model_lasso.fit(X_tr, y_tr)
         oof_lasso[val_idx] = model_lasso.predict(X_va)
         test_preds_lasso += model_lasso.predict(X_test) / N_FOLDS
 
-        # 2. ElasticNet Pipeline
-        model_elasticnet = make_pipeline(
+        # 2. ElasticNet Pipeline with TransformedTargetRegressor
+        base_elasticnet = make_pipeline(
             RobustScaler(),
             ElasticNetCV(
                 alphas=alphas_elasticnet,
@@ -117,6 +122,10 @@ def main():
                 random_state=RANDOM_STATE,
                 max_iter=10000,
             ),
+        )
+        model_elasticnet = TransformedTargetRegressor(
+            regressor=base_elasticnet,
+            transformer=QuantileTransformer(n_quantiles=900, output_distribution='normal', random_state=42)
         )
         model_elasticnet.fit(X_tr, y_tr)
         oof_elasticnet[val_idx] = model_elasticnet.predict(X_va)
