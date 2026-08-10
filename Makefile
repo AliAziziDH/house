@@ -24,7 +24,7 @@ make_submissions:
 	python src/ensemble.py
 
 	# (b) OOF-optimal weights: XGB 0.1667, CAT 0.1665
-	python src/ensemble_oof.py
+	# removed
 
 clean:
 	rm -rf processed_data/* models/* submissions/* experiments/archive/*
