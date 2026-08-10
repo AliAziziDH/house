@@ -52,7 +52,7 @@ def solve_greedy(df, budget, theta):
     df["Conformal_Downside"] = df["Asking_Price"] - df["Price_Lower_Bound"]
     return df
 
-def solve_pyomo(df, budget, theta, fractional_mode=False):
+def solve_pyomo(df, budget, theta, fractional_mode=True):
     """
     Pyomo optimization solver.
     """
@@ -74,7 +74,7 @@ def solve_pyomo(df, budget, theta, fractional_mode=False):
 
     # Variables
     if fractional_mode:
-        m.x = pyo.Var(m.I, domain=pyo.NonNegativeReals, bounds=(0, 1.0))
+        m.x = pyo.Var(m.I, domain=pyo.NonNegativeReals, bounds=(0, 4.0))
     else:
         m.x = pyo.Var(m.I, domain=pyo.Binary)
 
@@ -107,7 +107,7 @@ def solve_pyomo(df, budget, theta, fractional_mode=False):
         raise RuntimeError("Pyomo optimization did not converge optimally.")
 
 
-def recommend_portfolio(budget=1500000.0, theta=0.10, fractional_mode=False):
+def recommend_portfolio(budget=1500000.0, theta=0.10, fractional_mode=True):
     print("=" * 60)
     print("STARTING PORTFOLIO OPTIMIZATION")
     print("=" * 60)
