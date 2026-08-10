@@ -46,27 +46,18 @@ def preprocess_house_prices_data(data_dir: str = "./data") -> tuple:
     train = pd.read_csv(train_path)
     test = pd.read_csv(test_path)
 
-    # 1. Outlier Removal (GrLivArea > 4000 & SalePrice < 300,000 + Outliers)
+    # 1. Outlier Removal (GrLivArea > 4000 & SalePrice < 200,000 + Outliers)
     train = train[
-        ~((train["GrLivArea"] > 4000) & (train["SalePrice"] < 300000))
+        ~((train["GrLivArea"] > 4000) & (train["SalePrice"] < 200000))
     ].reset_index(drop=True)
     y_train_log = np.log1p(train["SalePrice"].values)
 
-    # 2. Ordinal Target Encoding for Neighborhood based on Median Price per SF
-    train["TotalSF"] = train["TotalBsmtSF"] + train["1stFlrSF"] + train["2ndFlrSF"]
-    train["PricePerSF"] = train["SalePrice"] / train["TotalSF"]
-    neigh_order = (
-        train.groupby("Neighborhood")["PricePerSF"].median().sort_values().index
-    )
-    neigh_map = {n: i + 1 for i, n in enumerate(neigh_order)}
-
-    X_train = train.drop(columns=["Id", "SalePrice", "TotalSF", "PricePerSF"])
+    # 2. Leak-free initialization for Neighborhood (assigned downstream fold-by-fold)
+    X_train = train.drop(columns=["Id", "SalePrice"])
     X_test = test.drop(columns=["Id"])
 
     combined = pd.concat([X_train, X_test], ignore_index=True)
-    combined["Neighborhood"] = (
-        combined["Neighborhood"].map(neigh_map).fillna(13).astype(int)
-    )
+    combined["Neighborhood"] = 0
 
     # 3. Ordinal Quality Mappings
     ord_cols = [
