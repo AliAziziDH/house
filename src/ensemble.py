@@ -73,20 +73,13 @@ print("ENSEMBLE: WEIGHTED AVERAGE")
 print("=" * 60)
 
 # Best weights from optimization (aligned with README)
-weight_catboost = 0.5
-weight_xgb = 0.5
-weight_lgb = 0.0
-weight_ridge = 0.0
-weight_lasso = 0.0
-weight_elasticnet = 0.0
+weight_catboost = 0.1667
+weight_xgb = 0.1667
+weight_lgb = 0.1667
+weight_ridge = 0.1667
+weight_lasso = 0.1667
+weight_elasticnet = 0.1667
 
-# Define missing linear/LGBM predictions as zeros
-lgb_pred_original = np.zeros(len(X_test))
-ridge_pred_original = np.zeros(len(X_test))
-lasso_pred_original = np.zeros(len(X_test))
-elasticnet_pred_original = np.zeros(len(X_test))
-
-# Calculate weighted average
 # Calculate weighted average
 try:
     ensemble_pred = (
@@ -157,9 +150,14 @@ try:
 except Exception: # noqa: BLE001
     elasticnet_cal_transformed = np.zeros(len(X_cal))
 
-# Instead of taking the last N elements which misaligns indices,
-# just use XGB and CatBoost for calibration ensemble prediction matching the final prediction ensemble structure
-ensemble_cal_log = (0.5 * xgb_cal_transformed) + (0.5 * catboost_cal_transformed)
+ensemble_cal_log = (
+    weight_xgb * xgb_cal_transformed +
+    weight_catboost * catboost_cal_transformed +
+    weight_lgb * lgb_cal_transformed +
+    weight_ridge * ridge_cal_transformed +
+    weight_lasso * lasso_cal_transformed +
+    weight_elasticnet * elasticnet_cal_transformed
+)
 
 # Calculate absolute residuals in log space
 R = np.abs(y_cal_log.values - ensemble_cal_log)
