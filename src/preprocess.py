@@ -137,6 +137,12 @@ def preprocess_house_prices_data(data_dir: str = "./data") -> tuple:
     X_train_raw["Neighborhood"] = train["Neighborhood"].values
     X_test_raw["Neighborhood"] = test["Neighborhood"].values
 
+    # Prune highly collinear VIF features
+    cols_to_drop = ["GarageArea", "TotRmsAbvGrd", "1stFlrSF"]
+    for col in cols_to_drop:
+        if col in combined.columns:
+            combined = combined.drop(columns=[col])
+
     # One-hot encode for other models
     encoded = pd.get_dummies(combined, drop_first=True)
 

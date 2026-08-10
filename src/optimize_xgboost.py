@@ -35,7 +35,7 @@ y_train_log = pd.read_csv("./processed_data/y_train_log.csv").squeeze()
 # Load original raw train data to prevent target leakage in Neighborhood encoding
 raw_train = pd.read_csv("./data/train.csv")
 raw_train = raw_train[
-    ~((raw_train["GrLivArea"] > 4000) & (raw_train["SalePrice"] < 300000))
+    ~((raw_train["GrLivArea"] > 4000) & (raw_train["SalePrice"] < 200000))
 ].reset_index(drop=True)
 raw_neighborhoods = raw_train["Neighborhood"]
 

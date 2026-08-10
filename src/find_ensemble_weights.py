@@ -53,7 +53,7 @@ def main():
     # Load original raw train data to prevent target leakage in Neighborhood encoding
     raw_train = pd.read_csv("./data/train.csv")
     raw_train = raw_train[
-        ~((raw_train["GrLivArea"] > 4000) & (raw_train["SalePrice"] < 300000))
+        ~((raw_train["GrLivArea"] > 4000) & (raw_train["SalePrice"] < 200000))
     ].reset_index(drop=True)
     raw_neighborhoods = raw_train["Neighborhood"]
 
@@ -371,10 +371,24 @@ def main():
     )
 
 
+    # Calculate Covariance Matrix of OOF Errors for Regularization
+    E = oof_matrix - y_train_log.values[:, None]
+    cov_matrix = np.cov(E, rowvar=False)
+
     def loss_func(weights: np.ndarray) -> float:
         w = np.array(weights)
         pred = oof_matrix @ w
-        return np.sqrt(mean_squared_error(y_train_log, pred))
+        mse = mean_squared_error(y_train_log, pred)
+
+        # Covariance regularization penalty: \lambda * \sum_{j!=k} w_j w_k Cov(e_j, e_k)
+        penalty = 0.0
+        lam = 0.1
+        for j in range(len(w)):
+            for k in range(len(w)):
+                if j != k:
+                    penalty += lam * w[j] * w[k] * cov_matrix[j, k]
+
+        return mse + penalty
 
 
     init_weights: list[float] = [1.0 / 6.0] * 6
