@@ -193,7 +193,7 @@ q_conditional[q_conditional == 0] = q_global
 ensemble_pred_log = np.log1p(ensemble_pred)
 
 # Calculate bounds and convert back to dollars using the localized bounds array
-lower_bounds = np.expm1(ensemble_pred_log - q_conditional)
+lower_bounds = np.maximum(0.0, np.expm1(ensemble_pred_log - q_conditional))
 upper_bounds = np.expm1(ensemble_pred_log + q_conditional)
 
 print(f"✅ Calibration Global Quantile (q) = {q_global:.5f}")
