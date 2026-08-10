@@ -74,7 +74,7 @@ def solve_pyomo(df, budget, theta, fractional_mode=True):
 
     # Variables
     if fractional_mode:
-        m.x = pyo.Var(m.I, domain=pyo.NonNegativeReals, bounds=(0, 4.0))
+        m.x = pyo.Var(m.I, domain=pyo.NonNegativeReals, bounds=(0.0, 1.0))
     else:
         m.x = pyo.Var(m.I, domain=pyo.Binary)
 
