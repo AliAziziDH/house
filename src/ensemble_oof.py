@@ -162,20 +162,41 @@ ensemble_cal_log = (
 # Calculate absolute residuals in log space
 R = np.abs(y_cal_log.values - ensemble_cal_log)
 
-# Calculate non-conformity quantile (alpha = 0.05)
+# Calculate Neighborhood-Conditional Conformal Prediction
 alpha = 0.05
-n_cal = len(R)
-quantile_val = (1.0 - alpha) * (1.0 + 1.0 / n_cal)
-q = np.quantile(R, min(quantile_val, 1.0))
+cal_neighborhoods = X_cal_raw["Neighborhood"].values
+test_neighborhoods = X_test_raw["Neighborhood"].values
+
+# Calculate global quantile as fallback
+n_cal_global = len(R)
+q_global = np.quantile(R, min((1.0 - alpha) * (1.0 + 1.0 / n_cal_global), 1.0))
+
+q_conditional = np.zeros(len(test_neighborhoods))
+
+# Group by neighborhood and calculate conditional quantiles
+for n in np.unique(test_neighborhoods):
+    mask = cal_neighborhoods == n
+    n_samples = np.sum(mask)
+
+    if n_samples >= 10:
+        R_cond = R[mask]
+        q_c = np.quantile(R_cond, min((1.0 - alpha) * (1.0 + 1.0 / n_samples), 1.0))
+        q_conditional[test_neighborhoods == n] = q_c
+    else:
+        # Fallback to global quantile for Low-Sample groups or unknown neighborhoods
+        q_conditional[test_neighborhoods == n] = q_global
+
+# Fallback for any missed values
+q_conditional[q_conditional == 0] = q_global
 
 # Convert test predictions back to log space to calculate bounds
 ensemble_pred_log = np.log1p(ensemble_pred)
 
-# Calculate bounds and convert back to dollars
-lower_bounds = np.expm1(ensemble_pred_log - q)
-upper_bounds = np.expm1(ensemble_pred_log + q)
+# Calculate bounds and convert back to dollars using the localized bounds array
+lower_bounds = np.expm1(ensemble_pred_log - q_conditional)
+upper_bounds = np.expm1(ensemble_pred_log + q_conditional)
 
-print(f"✅ Calibration Quantile (q) = {q:.5f}")
+print(f"✅ Calibration Global Quantile (q) = {q_global:.5f}")
 
 # ============================================
 # CREATE SUBMISSION FILES
