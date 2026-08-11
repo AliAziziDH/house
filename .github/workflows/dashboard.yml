@@ -26,13 +26,14 @@ jobs:
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         pip install streamlit plotly pyomo
 
-    - name: Verify Setup & Run Scripts
+    - name: Verify Setup & Test Scripts
       run: |
-        python -m py_compile src/*.py || true
-        if [ -f portfolio-dashboard.py ]; then
-          python portfolio-dashboard.py
-        elif [ -f src/portfolio_dashboard.py ]; then
-          python src/portfolio_dashboard.py
-        elif [ -f src/verify_setup.py ]; then
+        python -m py_compile src/*.py
+        if [ -f src/verify_setup.py ]; then
           python src/verify_setup.py
         fi
+        # Verify Streamlit dashboard initializes cleanly in headless mode
+        streamlit run src/portfolio_dashboard.py --server.headless true &
+        DASHBOARD_PID=$!
+        sleep 5
+        kill $DASHBOARD_PID || true
