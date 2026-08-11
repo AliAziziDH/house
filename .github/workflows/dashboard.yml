@@ -1,0 +1,38 @@
+name: House Prices Pipeline & Dashboard Automation
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  run-pipeline-and-dashboard:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install streamlit plotly pyomo
+
+    - name: Verify Setup & Run Scripts
+      run: |
+        python -m py_compile src/*.py || true
+        if [ -f portfolio-dashboard.py ]; then
+          python portfolio-dashboard.py
+        elif [ -f src/portfolio_dashboard.py ]; then
+          python src/portfolio_dashboard.py
+        elif [ -f src/verify_setup.py ]; then
+          python src/verify_setup.py
+        fi
