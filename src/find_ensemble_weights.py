@@ -1,5 +1,6 @@
 """
-Find optimal ensemble weights using OOF predictions with RMSLE
+Optimal Weighted Ensemble & Stacking with 6 Diverse Base Models
+Combines CatBoost, XGBoost, LightGBM, Ridge, Lasso, and ElasticNet using Scipy SLSQP optimization.
 """
 
 import numpy as np
@@ -39,28 +40,30 @@ best_params_cat = {
 # ============================================
 # LOAD DATA
 # ============================================
-print("=" * 60)
-print("LOADING DATA")
-print("=" * 60)
+def main():
+    print("=" * 60)
+    print("LOADING PROCESSED DATA FOR ENSEMBLE")
+    print("=" * 60)
 
 X_train = pd.read_csv("./processed_data/X_train.csv")
 y_train = pd.read_csv("./processed_data/y_train.csv").squeeze()
 X_test = pd.read_csv("./processed_data/X_test.csv")
 test_ids = pd.read_csv("./data/test.csv")["Id"]
 
-print(f"X_train shape: {X_train.shape}")
-print(f"y_train shape: {y_train.shape}")
+    X_train_raw = pd.read_csv("./processed_data/X_train_raw.csv")
+    X_test_raw = pd.read_csv("./processed_data/X_test_raw.csv")
 
-# ============================================
-# GENERATE OOF PREDICTIONS
-# ============================================
-print("\n" + "=" * 60)
-print("GENERATING OOF PREDICTIONS")
-print("=" * 60)
+    # Load original raw train data to prevent target leakage in Neighborhood encoding
+    raw_train = pd.read_csv("./data/train.csv")
+    raw_train = raw_train[
+        ~((raw_train["GrLivArea"] > 4000) & (raw_train["SalePrice"] < 200000))
+    ].reset_index(drop=True)
+    raw_neighborhoods = raw_train["Neighborhood"]
 
-kf = KFold(n_splits=5, shuffle=True, random_state=42)
-xgb_oof = np.zeros(len(X_train))
-cat_oof = np.zeros(len(X_train))
+    cat_features = X_train_raw.select_dtypes(include=["object"]).columns.tolist()
+    for col in cat_features:
+        X_train_raw[col] = X_train_raw[col].fillna("Missing").astype(str)
+        X_test_raw[col] = X_test_raw[col].fillna("Missing").astype(str)
 
 for fold, (train_idx, val_idx) in enumerate(kf.split(X_train)):
     print(f"  Fold {fold + 1}/5")
@@ -80,12 +83,9 @@ for fold, (train_idx, val_idx) in enumerate(kf.split(X_train)):
     cat_fold.fit(X_train_fold, y_train_fold, verbose=False)
     cat_oof[val_idx] = cat_fold.predict(X_val_fold)
 
-# ============================================
-# FIND BEST WEIGHT
-# ============================================
-print("\n" + "=" * 60)
-print("FINDING OPTIMAL ENSEMBLE WEIGHT")
-print("=" * 60)
+    print(f"X_train shape: {X_train.shape}")
+    print(f"X_train_raw shape: {X_train_raw.shape}")
+    print(f"y_train_log shape: {y_train_log.shape}")
 
 best_weight = 0.5
 best_rmsle = float("inf")
@@ -105,28 +105,44 @@ print(
 )
 print(f"✅ Best OOF RMSLE: {best_rmsle:.6f}")
 
-# ============================================
-# TRAIN FINAL MODELS ON FULL DATA
-# ============================================
-print("\n" + "=" * 60)
-print("TRAINING FINAL MODELS ON FULL DATA")
-print("=" * 60)
+    DEFAULT_CAT_PARAMS: dict[str, Any] = {
+        "depth": 4,  # Clamped to 4
+        "learning_rate": 0.020978632623778505,
+        "l2_leaf_reg": 0.012607414383039797,
+        "subsample": 0.6441998268583774,
+        "random_strength": 2.4414129060841185,
+    }
 
-xgb_final = xgb.XGBRegressor(**best_params_xgb)
-xgb_final.fit(X_train, y_train)
+    try:
+        xgb_study = optuna.load_study(
+            study_name="xgboost_optimization_log_target",
+            storage=f"sqlite:///{os.path.abspath('./experiments/xgboost_study_log.db')}",
+        )
+        best_params_xgb = xgb_study.best_params
+    except Exception:  # noqa: BLE001
+        best_params_xgb = DEFAULT_XGB_PARAMS
 
-cat_final = CatBoostRegressor(**best_params_cat)
-cat_final.fit(X_train, y_train, verbose=False)
+    try:
+        lgb_study = optuna.load_study(
+            study_name="lightgbm_optimization_log_target",
+            storage=f"sqlite:///{os.path.abspath('./experiments/lightgbm_study_log.db')}",
+        )
+        best_params_lgb = lgb_study.best_params
+    except Exception:  # noqa: BLE001
+        best_params_lgb = DEFAULT_LGB_PARAMS
 
-# ============================================
-# GENERATE SUBMISSION
-# ============================================
-print("\n" + "=" * 60)
-print("GENERATING SUBMISSION")
-print("=" * 60)
+    try:
+        cat_study = optuna.load_study(
+            study_name="catboost_optimization_log_target",
+            storage=f"sqlite:///{os.path.abspath('./experiments/catboost_study_log.db')}",
+        )
+        best_params_cat = cat_study.best_params
+    except Exception:  # noqa: BLE001
+        best_params_cat = DEFAULT_CAT_PARAMS
 
-xgb_test = xgb_final.predict(X_test)
-cat_test = cat_final.predict(X_test)
+    # Defensive tree depth clamping
+    best_params_xgb["max_depth"] = min(best_params_xgb.get("max_depth", 4), 4)
+    best_params_cat["depth"] = min(best_params_cat.get("depth", 4), 4)
 
 final_pred = best_weight * xgb_test + (1 - best_weight) * cat_test
 
@@ -134,10 +150,12 @@ submission = pd.DataFrame({"Id": test_ids, "SalePrice": final_pred})
 
 submission.to_csv("./submissions/submission_ensemble_rmsle_final.csv", index=False)
 
-print("✅ Submission saved to ./submissions/submission_ensemble_rmsle_final.csv")
-print(f"   Shape: {submission.shape}")
-print("   First 5 rows:")
-print(submission.head())
+    oof_cat = np.zeros(len(X_train))
+    oof_xgb = np.zeros(len(X_train))
+    oof_lgb = np.zeros(len(X_train))
+    oof_ridge = np.zeros(len(X_train))
+    oof_lasso = np.zeros(len(X_train))
+    oof_elasticnet = np.zeros(len(X_train))
 
 print("\n" + "=" * 60)
 print("ENSEMBLE WEIGHT OPTIMIZATION COMPLETED")

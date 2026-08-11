@@ -1,5 +1,6 @@
 """
-LightGBM Training and Optimization with Optuna
+LightGBM Hyperparameter Optimization with Optuna & Early Stopping
+Trained on y_train_log (np.log1p(SalePrice)) directly matching Kaggle RMSLE.
 """
 
 import os
@@ -14,18 +15,27 @@ from sklearn.preprocessing import PowerTransformer
 
 from src.metrics import rmsle
 
+optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+# ============================================
+# CONFIGURATION
+# ============================================
+RANDOM_STATE = 42
+N_FOLDS = 5
+N_TRIALS = 30
+
 # ============================================
 # LOAD DATA
 # ============================================
 print("=" * 60)
-print("LOADING PREPROCESSED DATA")
+print("LOADING PROCESSED DATA FOR LIGHTGBM")
 print("=" * 60)
 
 X_train = pd.read_csv("./processed_data/X_train.csv")
 y_train = pd.read_csv("./processed_data/y_train.csv").squeeze()
 
 print(f"X_train shape: {X_train.shape}")
-print(f"y_train shape: {y_train.shape}")
+print(f"y_train_log shape: {y_train_log.shape}")
 
 # ============================================
 # BOX-COX TRANSFORMATION
@@ -82,7 +92,7 @@ def objective(trial):
 # RUN OPTIMIZATION
 # ============================================
 print("\n" + "=" * 60)
-print("STARTING LIGHTGBM OPTIMIZATION")
+print("STARTING LIGHTGBM OPTIMIZATION WITH EARLY STOPPING")
 print("=" * 60)
 
 os.makedirs("./experiments", exist_ok=True)
@@ -94,14 +104,7 @@ study = optuna.create_study(
     load_if_exists=True,
 )
 
-study.optimize(objective, n_trials=50, show_progress_bar=True)
-
-# ============================================
-# SAVE RESULTS
-# ============================================
-print("\n" + "=" * 60)
-print("SAVING RESULTS")
-print("=" * 60)
+study.optimize(objective, n_trials=N_TRIALS)
 
 best_params = study.best_params
 best_model = lgb.LGBMRegressor(**best_params, random_state=42, verbosity=-1)
@@ -117,8 +120,33 @@ trials_df.to_csv("./experiments/lightgbm_trials.csv", index=False)
 
 print(f"✅ Best RMSE: {study.best_value:.4f}")
 print(f"✅ Best parameters: {best_params}")
-print("✅ Model saved to './models/lightgbm_best.pkl'")
-print("✅ Trials saved to './experiments/lightgbm_trials.csv'")
+
+# ============================================
+# TRAIN FINAL MODEL ON FULL DATA
+# ============================================
+print("\n" + "=" * 60)
+print("TRAINING FINAL LIGHTGBM MODEL ON FULL DATA")
+print("=" * 60)
+
+final_params = best_params.copy()
+final_params.update({
+    'n_estimators': 2000,
+    'random_state': RANDOM_STATE,
+    'verbosity': -1
+})
+
+X_tr, X_val, y_tr, y_val = train_test_split(X_train, y_train_log, test_size=0.1, random_state=RANDOM_STATE)
+
+best_model = lgb.LGBMRegressor(**final_params)
+best_model.fit(
+    X_tr, y_tr,
+    eval_set=[(X_val, y_val)],
+    callbacks=[lgb.early_stopping(stopping_rounds=50, verbose=False)]
+)
+
+joblib.dump(best_model, './models/lightgbm_best.pkl')
+trials_df = study.trials_dataframe()
+trials_df.to_csv('./experiments/lightgbm_trials_log.csv', index=False)
 
 # ============================================
 # GENERATE SUBMISSION

@@ -1,7 +1,6 @@
 """
-CatBoost Optimization with Optuna (on Raw Data)
-Uses RMSLE (Root Mean Squared Log Error) as the evaluation metric.
-This version uses raw data with categorical features for CatBoost.
+CatBoost Optimization with Optuna (Native Categoricals & Early Stopping)
+Trained on y_train_log (np.log1p(SalePrice)) directly matching Kaggle RMSLE.
 """
 
 import os
@@ -21,7 +20,7 @@ from src.metrics import rmsle
 # ============================================
 RANDOM_STATE = 42
 N_FOLDS = 5
-N_TRIALS = 50
+N_TRIALS = 15  # Optimized for speed in the sandbox environment
 
 
 # ============================================
@@ -42,9 +41,8 @@ for col in cat_features:
     X_train_raw[col] = X_train_raw[col].fillna("Missing").astype(str)
 
 print(f"X_train_raw shape: {X_train_raw.shape}")
-print(f"y_train shape: {y_train.shape}")
-print(f"Categorical features: {len(cat_features)}")
-print(cat_features[:10])
+print(f"y_train_log shape: {y_train_log.shape}")
+print(f"Categorical features count: {len(cat_features)}")
 
 # ============================================
 # BOX-COX TRANSFORMATION
@@ -109,7 +107,7 @@ def objective(trial):
 # RUN OPTIMIZATION
 # ============================================
 print("\n" + "=" * 60)
-print("STARTING CATBOOST OPTIMIZATION (RAW DATA, RMSLE)")
+print("STARTING CATBOOST OPTIMIZATION WITH EARLY STOPPING")
 print("=" * 60)
 
 os.makedirs("./experiments", exist_ok=True)
@@ -122,14 +120,7 @@ study = optuna.create_study(
     load_if_exists=True,
 )
 
-study.optimize(objective, n_trials=N_TRIALS, show_progress_bar=True)
-
-# ============================================
-# SAVE RESULTS
-# ============================================
-print("\n" + "=" * 60)
-print("SAVING RESULTS")
-print("=" * 60)
+study.optimize(objective, n_trials=N_TRIALS)
 
 best_params = study.best_params
 # Clean training data before final fitting
@@ -151,10 +142,8 @@ joblib.dump(pt, "./models/boxcox_transformer.pkl")
 trials_df = study.trials_dataframe()
 trials_df.to_csv("./experiments/catboost_raw_trials_rmsle.csv", index=False)
 
-print(f"✅ Best RMSLE: {study.best_value:.6f}")
-print(f"✅ Best parameters: {best_params}")
-print("✅ Model saved to './models/catboost_best_rmsle.pkl'")
-print("✅ Trials saved to './experiments/catboost_raw_trials_rmsle.csv'")
+# Save cat_features list alongside model for downstream ensembling
+joblib.dump(cat_features, "./models/cat_features.pkl")
 
 # ============================================
 # GENERATE SUBMISSION
@@ -170,8 +159,8 @@ test_ids = pd.read_csv("./data/test.csv")["Id"]
 for col in cat_features:
     X_test_raw[col] = X_test_raw[col].fillna("Missing").astype(str)
 
-y_pred_transformed = best_model.predict(X_test_raw)
-y_pred_original = pt.inverse_transform(y_pred_transformed.reshape(-1, 1)).flatten()
+y_pred_log = best_model.predict(X_test_raw)
+y_pred_dollars = np.expm1(y_pred_log)
 
 submission = pd.DataFrame({"Id": test_ids, "SalePrice": y_pred_original})
 import os

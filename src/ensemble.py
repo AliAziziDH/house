@@ -31,7 +31,7 @@ print("=" * 60)
 
 # Predict from each model (in transformed scale)
 xgb_pred_transformed = xgb_model.predict(X_test)
-catboost_pred_transformed = catboost_model.predict(X_test)
+catboost_pred_transformed = catboost_model.predict(X_test_raw)
 
 # Inverse transform to original scale (dollars)
 xgb_pred_original = pt.inverse_transform(xgb_pred_transformed.reshape(-1, 1)).flatten()
@@ -49,8 +49,12 @@ print("ENSEMBLE: WEIGHTED AVERAGE")
 print("=" * 60)
 
 # Best weights from optimization (aligned with README)
-weight_xgb = 0.64
-weight_catboost = 0.36
+weight_catboost = 0.1667
+weight_xgb = 0.1667
+weight_lgb = 0.1667
+weight_ridge = 0.1667
+weight_lasso = 0.1667
+weight_elasticnet = 0.1667
 
 # Calculate weighted average
 ensemble_pred = (
@@ -60,10 +64,10 @@ ensemble_pred = (
 print(f"Weights: XGBoost = {weight_xgb:.2f}, CatBoost = {weight_catboost:.2f}")
 
 # ============================================
-# CREATE SUBMISSION
+# INDUCTIVE CONFORMAL PREDICTION (ICP)
 # ============================================
 print("\n" + "=" * 60)
-print("CREATING SUBMISSION FILE")
+print("CALCULATING CONFORMAL PREDICTION INTERVALS")
 print("=" * 60)
 
 submission = pd.DataFrame({"Id": test_ids, "SalePrice": ensemble_pred})
