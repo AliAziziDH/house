@@ -2,8 +2,7 @@
 # Git Exclusions
 # ============================================
 
-# Raw Data (heavy binaries and datasets)
-data/*.csv
+# Raw Data (heavy archives)
 data/*.zip
 
 # Processed outputs & submissions
