@@ -1,33 +1,44 @@
 # ============================================
-# AuroraGate — Context & Git Exclusions
+# Git Exclusions
 # ============================================
 
-# داده‌های خام (سنگین، نباید وارد context یا git شوند)
+# Raw Data (heavy binaries and datasets)
 data/*.csv
 data/*.zip
 
-# خروجی‌های پردازش‌شده
+# Processed outputs & submissions
 processed_data/
 submissions/
+submission*.csv
+newsub/
+kernel_output/
 
-# مدل‌های ذخیره‌شده (binary)
+# Saved Models & Binaries
 models/*.pkl
 models/*.cbm
 models/*.bin
+AutogluonModels/
 
-# CatBoost logs
+# Logs & Monitoring
 catboost_info/
+*.log
+*.tmp
+*.temp
 
-# Python cache
+# Python Cache & Testing
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
+.pytest_cache/
+.ruff_cache/
 
 # Jupyter
 .ipynb_checkpoints/
 *.ipynb_checkpoints
+notebooks/.ipynb_checkpoints/
+**/.ipynb_checkpoints/
 
 # Virtual environments
 .env
@@ -39,18 +50,23 @@ env/
 *.db
 optuna_study*
 
-# Temp files
-*.log
-*.tmp
-*.temp
-scratch/*.csv
-scratch/*.pkl
+# Scratch & Local State
+scratch/
+kernel-metadata.json
+gateway_state.json
+fix_ensemble_final.py
+context_auditor.py
 
-# IDE
+# System & Tooling artifacts
 .DS_Store
-
-# Jupyter checkpoints
-notebooks/.ipynb_checkpoints/
-**/.ipynb_checkpoints/
-catboost_info/
+**/.DS_Store
 .aider*
+.agents/
+.qodo/
+.claudecodeignore
+.dockerignore
+.gcloudignore
+.geminiignore
+
+# Experiment archives
+experiments/archive/

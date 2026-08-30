@@ -4,6 +4,40 @@ import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 
+__all__ = [
+    "BSMT_EXPOSURE_MAP",
+    "BSMT_FIN_MAP",
+    "BSMT_QUAL_MAP",
+    "FUNCTIONAL_MAP",
+    "LAND_CONTOUR_MAP",
+    "LAND_SLOPE_MAP",
+    "LOT_SHAPE_MAP",
+    "QUALITY_MAP",
+    "UTILITIES_MAP",
+    "AmesDataTransformer",
+    "preprocess_data",
+]
+
+# Ordinal mappings
+QUALITY_MAP = {"Ex": 5, "Gd": 4, "TA": 3, "Fa": 2, "Po": 1, "None": 0}
+BSMT_QUAL_MAP = {"Ex": 5, "Gd": 4, "TA": 3, "Fa": 2, "Po": 1, "None": 0}
+BSMT_EXPOSURE_MAP = {"Gd": 4, "Av": 3, "Mn": 2, "No": 1, "None": 0}
+BSMT_FIN_MAP = {"GLQ": 6, "ALQ": 5, "BLQ": 4, "Rec": 3, "LwQ": 2, "Unf": 1, "None": 0}
+FUNCTIONAL_MAP = {
+    "Typ": 8,
+    "Min1": 7,
+    "Min2": 6,
+    "Mod": 5,
+    "Maj1": 4,
+    "Maj2": 3,
+    "Sev": 2,
+    "Sal": 1,
+}
+LOT_SHAPE_MAP = {"Reg": 4, "IR1": 3, "IR2": 2, "IR3": 1}
+LAND_CONTOUR_MAP = {"Lvl": 4, "HLS": 3, "Bnk": 2, "Low": 1}
+UTILITIES_MAP = {"AllPub": 3, "NoSewr": 2, "NoSeWa": 1}
+LAND_SLOPE_MAP = {"Gtl": 3, "Mod": 2, "Sev": 1}
+
 
 class AmesDataTransformer(BaseEstimator, TransformerMixin):
     """
@@ -165,44 +199,25 @@ class AmesDataTransformer(BaseEstimator, TransformerMixin):
             df["NeighborhoodTargetRank"] = mapped_ranks.fillna(self.global_neighborhood_rank_)
 
         # 8. Ordinal encoding
-        quality_map = {"Po": 1, "Fa": 2, "TA": 3, "Gd": 4, "Ex": 5}
-        bsmt_qual_map = {"Po": 1, "Fa": 2, "TA": 3, "Gd": 4, "Ex": 5}
-        bsmt_exposure_map = {"No": 1, "Mn": 2, "Av": 3, "Gd": 4}
-        bsmt_fin_map = {"Unf": 1, "LwQ": 2, "Rec": 3, "BLQ": 4, "ALQ": 5, "GLQ": 6}
-        functional_map = {
-            "Sal": 1,
-            "Sev": 2,
-            "Maj2": 3,
-            "Maj1": 4,
-            "Mod": 5,
-            "Min2": 6,
-            "Min1": 7,
-            "Typ": 8,
-        }
-        lot_shape_map = {"IR3": 1, "IR2": 2, "IR1": 3, "Reg": 4}
-        land_contour_map = {"Low": 1, "Bnk": 2, "HLS": 3, "Lvl": 4}
-        utilities_map = {"NoSeWa": 1, "NoSewr": 2, "AllPub": 3}
-        land_slope_map = {"Sev": 1, "Mod": 2, "Gtl": 3}
-
         ordinal_mappings = {
-            "ExterQual": quality_map,
-            "ExterCond": quality_map,
-            "BsmtQual": bsmt_qual_map,
-            "BsmtCond": bsmt_qual_map,
-            "HeatingQC": quality_map,
-            "KitchenQual": quality_map,
-            "FireplaceQu": quality_map,
-            "GarageQual": quality_map,
-            "GarageCond": quality_map,
-            "PoolQC": quality_map,
-            "BsmtExposure": bsmt_exposure_map,
-            "BsmtFinType1": bsmt_fin_map,
-            "BsmtFinType2": bsmt_fin_map,
-            "Functional": functional_map,
-            "LotShape": lot_shape_map,
-            "LandContour": land_contour_map,
-            "Utilities": utilities_map,
-            "LandSlope": land_slope_map,
+            "ExterQual": QUALITY_MAP,
+            "ExterCond": QUALITY_MAP,
+            "BsmtQual": BSMT_QUAL_MAP,
+            "BsmtCond": BSMT_QUAL_MAP,
+            "HeatingQC": QUALITY_MAP,
+            "KitchenQual": QUALITY_MAP,
+            "FireplaceQu": QUALITY_MAP,
+            "GarageQual": QUALITY_MAP,
+            "GarageCond": QUALITY_MAP,
+            "PoolQC": QUALITY_MAP,
+            "BsmtExposure": BSMT_EXPOSURE_MAP,
+            "BsmtFinType1": BSMT_FIN_MAP,
+            "BsmtFinType2": BSMT_FIN_MAP,
+            "Functional": FUNCTIONAL_MAP,
+            "LotShape": LOT_SHAPE_MAP,
+            "LandContour": LAND_CONTOUR_MAP,
+            "Utilities": UTILITIES_MAP,
+            "LandSlope": LAND_SLOPE_MAP,
         }
 
         for col, mapping in ordinal_mappings.items():

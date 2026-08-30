@@ -11,13 +11,14 @@ except ImportError:
     PYOMO_AVAILABLE = False
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+logger = logging.getLogger(__name__)
 
 def solve_greedy(df, budget, theta):
     """
     Vectorized Greedy Heuristic Solver.
     Sorts by Expected Profit per dollar (ROI) and buys top properties until budget or risk is hit.
     """
-    logging.warning("Pyomo solver failed or unavailable. Falling back to Vectorized Greedy Heuristic Solver.")
+    logger.warning("Pyomo solver failed or unavailable. Falling back to Vectorized Greedy Heuristic Solver.")
 
     # Calculate Expected Profit and Downside Risk
     df["Expected_Profit"] = df["SalePrice_pred"] - df["Asking_Price"]
@@ -98,7 +99,7 @@ def solve_pyomo(df, budget, theta, fractional_mode=True):
     results = solver.solve(m, tee=False)
 
     if (results.solver.status == pyo.SolverStatus.ok) and (results.solver.termination_condition == pyo.TerminationCondition.optimal):
-        logging.info("Pyomo optimization successful.")
+        logger.info("Pyomo optimization successful.")
         df["Selected_Fraction"] = [pyo.value(m.x[i]) for i in m.I]
         df["Expected_Profit"] = expected_profits
         df["Conformal_Downside"] = asking_prices - lower_bounds
@@ -123,7 +124,7 @@ def recommend_portfolio(budget=1500000.0, theta=0.10, fractional_mode=True):
 
     # Ensure interval bounds exist
     if "Price_Lower_Bound" not in df.columns:
-        logging.warning("Conformal bounds missing. Simulating 5% bounds for optimization.")
+        logger.warning("Conformal bounds missing. Simulating 5% bounds for optimization.")
         df["Price_Lower_Bound"] = df["SalePrice"] * 0.95
         df["Price_Upper_Bound"] = df["SalePrice"] * 1.05
 
@@ -138,8 +139,9 @@ def recommend_portfolio(budget=1500000.0, theta=0.10, fractional_mode=True):
     try:
         res_df = solve_pyomo(df.copy(), budget, theta, fractional_mode)
     except Exception as e: # noqa: BLE001
-        logging.error(f"Optimization exception: {e}")
+        logger.error(f"Optimization exception: {e}")
         res_df = solve_greedy(df.copy(), budget, theta)
+
 
     # 4. Save
     output_cols = [

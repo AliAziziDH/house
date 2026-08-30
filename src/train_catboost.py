@@ -1,6 +1,6 @@
 """
 CatBoost Optimization with Optuna (Native Categoricals & Early Stopping)
-Trained on y_train_log (np.log1p(SalePrice)) directly matching Kaggle RMSLE.
+Trained on Box-Cox transformed SalePrice directly matching Kaggle RMSLE.
 """
 
 import os
@@ -34,14 +34,14 @@ X_train_raw = pd.read_csv("./processed_data/X_train_raw.csv")
 y_train = pd.read_csv("./processed_data/y_train.csv").squeeze()
 
 # Identify categorical features
-cat_features = X_train_raw.select_dtypes(include=["object", "str"]).columns.tolist()
+cat_features = X_train_raw.select_dtypes(include=["object", "category"]).columns.tolist()
 
 # Clean NaN values in categorical columns
 for col in cat_features:
     X_train_raw[col] = X_train_raw[col].fillna("Missing").astype(str)
 
 print(f"X_train_raw shape: {X_train_raw.shape}")
-print(f"y_train_log shape: {y_train_log.shape}")
+print(f"y_train shape: {y_train.shape}")
 print(f"Categorical features count: {len(cat_features)}")
 
 # ============================================
@@ -159,11 +159,10 @@ test_ids = pd.read_csv("./data/test.csv")["Id"]
 for col in cat_features:
     X_test_raw[col] = X_test_raw[col].fillna("Missing").astype(str)
 
-y_pred_log = best_model.predict(X_test_raw)
-y_pred_dollars = np.expm1(y_pred_log)
+y_pred_transformed = best_model.predict(X_test_raw)
+y_pred_original = pt.inverse_transform(y_pred_transformed.reshape(-1, 1)).flatten()
 
 submission = pd.DataFrame({"Id": test_ids, "SalePrice": y_pred_original})
-import os
 
 os.makedirs("./submissions", exist_ok=True)
 submission.to_csv("./submissions/submission_catboost_raw.csv", index=False)
@@ -176,3 +175,4 @@ print(submission.head())
 print("\n" + "=" * 60)
 print("CATBOOST RAW OPTIMIZATION COMPLETED")
 print("=" * 60)
+

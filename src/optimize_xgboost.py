@@ -1,6 +1,6 @@
 """
 XGBoost Hyperparameter Optimization with Optuna & Early Stopping
-Trained on y_train_log (np.log1p(SalePrice)) directly matching Kaggle RMSLE.
+Trained on Box-Cox transformed SalePrice directly matching Kaggle RMSLE.
 """
 
 import os
@@ -9,7 +9,7 @@ import joblib
 import numpy as np
 import optuna
 import pandas as pd
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, train_test_split
 from sklearn.preprocessing import PowerTransformer
 from xgboost import XGBRegressor
 
@@ -34,7 +34,7 @@ X_train = pd.read_csv("./processed_data/X_train.csv")
 y_train = pd.read_csv("./processed_data/y_train.csv").squeeze()
 
 print(f"X_train shape: {X_train.shape}")
-print(f"y_train_log shape: {y_train_log.shape}")
+print(f"y_train shape: {y_train.shape}")
 
 
 # ============================================
@@ -152,30 +152,10 @@ tr_idx, val_idx = train_test_split(
     np.arange(len(X_train)), test_size=0.1, random_state=RANDOM_STATE
 )
 
-fold_raw_train = raw_train.iloc[tr_idx].copy()
-fold_raw_train["TotalSF"] = (
-    fold_raw_train["TotalBsmtSF"]
-    + fold_raw_train["1stFlrSF"]
-    + fold_raw_train["2ndFlrSF"]
-)
-fold_raw_train["PricePerSF"] = fold_raw_train["SalePrice"] / fold_raw_train["TotalSF"]
-
-neigh_order = (
-    fold_raw_train.groupby("Neighborhood")["PricePerSF"].median().sort_values().index
-)
-neigh_map = {n: i + 1 for i, n in enumerate(neigh_order)}
-
 X_tr = X_train.iloc[tr_idx].copy()
 X_val = X_train.iloc[val_idx].copy()
-y_tr = y_train_log.iloc[tr_idx]
-y_val = y_train_log.iloc[val_idx]
-
-X_tr["Neighborhood"] = (
-    raw_neighborhoods.iloc[tr_idx].map(neigh_map).fillna(13).astype(int)
-)
-X_val["Neighborhood"] = (
-    raw_neighborhoods.iloc[val_idx].map(neigh_map).fillna(13).astype(int)
-)
+y_tr = y_transformed[tr_idx]
+y_val = y_transformed[val_idx]
 
 best_model = XGBRegressor(**final_params)
 best_model.fit(X_tr, y_tr, eval_set=[(X_val, y_val)], verbose=False)
@@ -197,14 +177,12 @@ print("=" * 60)
 X_test = pd.read_csv("./processed_data/X_test.csv")
 test_ids = pd.read_csv("./data/test.csv")["Id"]
 
-y_pred_log = best_model.predict(X_test)
-y_pred_dollars = np.expm1(y_pred_log)
+y_pred_transformed = best_model.predict(X_test)
+y_pred_original = pt.inverse_transform(y_pred_transformed.reshape(-1, 1)).flatten()
 
 submission = pd.DataFrame({"Id": test_ids, "SalePrice": y_pred_original})
-import os
 
 os.makedirs("./submissions", exist_ok=True)
-
 submission.to_csv("./submissions/submission_xgboost_rmsle.csv", index=False)
 
 print("✅ Submission saved to './submissions/submission_xgboost_rmsle.csv'")
@@ -215,3 +193,4 @@ print(submission.head())
 print("\n" + "=" * 60)
 print("OPTIMIZATION COMPLETED")
 print("=" * 60)
+

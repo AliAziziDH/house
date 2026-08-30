@@ -1,3 +1,5 @@
+import os
+
 import joblib
 import pandas as pd
 
@@ -10,6 +12,7 @@ print("=" * 60)
 
 # Load test data
 X_test = pd.read_csv("./processed_data/X_test.csv")
+X_test_raw = pd.read_csv("./processed_data/X_test_raw.csv")
 test_ids = pd.read_csv("./data/test.csv")["Id"]
 
 # Load trained models (we only use the best ones)
@@ -17,8 +20,11 @@ xgb_model = joblib.load("./models/xgboost_best_rmsle.pkl")
 catboost_model = joblib.load("./models/catboost_best_rmsle.pkl")
 pt = joblib.load("./models/boxcox_transformer.pkl")
 
-# Load the transformer (Box-Cox)
-pt = joblib.load("./models/boxcox_transformer.pkl")
+if os.path.exists("./models/cat_features.pkl"):
+    cat_features = joblib.load("./models/cat_features.pkl")
+    for col in cat_features:
+        if col in X_test_raw.columns:
+            X_test_raw[col] = X_test_raw[col].fillna("Missing").astype(str)
 
 print("✅ Models and transformer loaded successfully.")
 
@@ -49,12 +55,8 @@ print("ENSEMBLE: WEIGHTED AVERAGE")
 print("=" * 60)
 
 # Best weights from optimization (aligned with README)
-weight_catboost = 0.1667
-weight_xgb = 0.1667
-weight_lgb = 0.1667
-weight_ridge = 0.1667
-weight_lasso = 0.1667
-weight_elasticnet = 0.1667
+weight_catboost = 0.50
+weight_xgb = 0.50
 
 # Calculate weighted average
 ensemble_pred = (
@@ -64,20 +66,18 @@ ensemble_pred = (
 print(f"Weights: XGBoost = {weight_xgb:.2f}, CatBoost = {weight_catboost:.2f}")
 
 # ============================================
-# INDUCTIVE CONFORMAL PREDICTION (ICP)
+# SUBMISSION GENERATION
 # ============================================
 print("\n" + "=" * 60)
-print("CALCULATING CONFORMAL PREDICTION INTERVALS")
+print("GENERATING SUBMISSION")
 print("=" * 60)
 
 submission = pd.DataFrame({"Id": test_ids, "SalePrice": ensemble_pred})
 
-import os
-
 os.makedirs("./submissions", exist_ok=True)
-
-submission.to_csv("submission_ensemble_final.csv", index=False)
-print("✅ Submission file saved as 'submission_ensemble_final.csv'")
+submission.to_csv("./submissions/submission_ensemble_final.csv", index=False)
+print("✅ Submission file saved as './submissions/submission_ensemble_final.csv'")
 print(f"   Shape: {submission.shape}")
 print("   First 5 rows:")
 print(submission.head())
+
