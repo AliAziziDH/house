@@ -33,10 +33,10 @@ except Exception as e:  # noqa: BLE001
 # Load test data
 
 X_test = pd.read_csv("./processed_data/X_test.csv")
-X_test_raw = pd.read_csv("./processed_data/X_test_raw_clean.csv")
+X_test_raw = pd.read_csv("./data/test.csv")
 test_ids = pd.read_csv("./data/test.csv")["Id"]
 
-cat_features = pd.read_csv("./processed_data/X_train_raw.csv").select_dtypes(include=["object", "category"]).columns.tolist()
+cat_features = pd.read_csv("./data/train.csv").select_dtypes(include=["object"]).columns.tolist()
 for col in cat_features:
     X_test_raw[col] = X_test_raw[col].fillna("Missing").astype(str)
 
@@ -79,7 +79,7 @@ print("=" * 60)
 
 # Predict from each model (in transformed scale)
 xgb_pred_transformed = xgb_model.predict(X_test)
-catboost_pred_transformed = catboost_model.predict(X_test_raw)
+catboost_pred_transformed = catboost_model.predict(X_test)
 
 # Load the transformer (Box-Cox)
 pt = joblib.load("./models/boxcox_transformer.pkl")
@@ -127,8 +127,8 @@ print("=" * 60)
 from sklearn.model_selection import train_test_split
 
 X_train = pd.read_csv("./processed_data/X_train.csv")
-X_train_raw = pd.read_csv("./processed_data/X_train_raw.csv")
-y_train_log = pd.read_csv("./processed_data/y_train_log.csv").squeeze()
+X_train_raw = pd.read_csv("./data/train.csv").drop(["Id", "SalePrice"], axis=1)
+y_train = pd.read_csv("./processed_data/y_train.csv").squeeze(); pt = joblib.load("./models/boxcox_transformer.pkl"); y_train_log = pd.Series(pt.transform(y_train.values.reshape(-1, 1)).flatten())
 
 
 # Recreate 10% calibration set split
@@ -146,7 +146,7 @@ for col in cat_features:
 
 # Generate ensemble predictions on calibration set
 xgb_cal_transformed = xgb_model.predict(X_cal)
-catboost_cal_transformed = catboost_model.predict(X_cal_raw)
+catboost_cal_transformed = catboost_model.predict(X_cal)
 try:
     lgb_cal_transformed = lgb_model.predict(X_cal)
 except Exception as e:  # noqa: BLE001

@@ -30,7 +30,7 @@ print("=" * 60)
 print("LOADING RAW DATA FOR CATBOOST")
 print("=" * 60)
 
-X_train_raw = pd.read_csv("./processed_data/X_train_raw.csv")
+X_train_raw = pd.read_csv("./processed_data/X_train.csv")
 y_train = pd.read_csv("./processed_data/y_train.csv").squeeze()
 
 # Identify categorical features
@@ -152,7 +152,7 @@ print("\n" + "=" * 60)
 print("GENERATING SUBMISSION")
 print("=" * 60)
 
-X_test_raw = pd.read_csv("./processed_data/X_test_raw.csv")
+X_test_raw = pd.read_csv("./processed_data/X_test.csv")
 test_ids = pd.read_csv("./data/test.csv")["Id"]
 
 # Clean test data as well

@@ -1,71 +1,49 @@
-# ============================================
-# Git Exclusions
-# ============================================
-
-# Raw Data (heavy archives)
-data/*.zip
-
-# Processed outputs & submissions
-processed_data/
-submissions/
-submission*.csv
-newsub/
-kernel_output/
-
-# Saved Models & Binaries
-models/*.pkl
-models/*.cbm
-models/*.bin
-AutogluonModels/
-
-# Logs & Monitoring
-catboost_info/
-*.log
-*.tmp
-*.temp
-
-# Python Cache & Testing
+# Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+*.so
 .Python
-.pytest_cache/
-.ruff_cache/
-
-# Jupyter
-.ipynb_checkpoints/
-*.ipynb_checkpoints
-notebooks/.ipynb_checkpoints/
-**/.ipynb_checkpoints/
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
 
 # Virtual environments
-.env
 venv/
-env/
 .venv/
+env/
+ENV/
+env.bak/
+venv.bak/
 
-# Optuna storage
+# Data
+data/*.csv
+processed_data/*.csv
+submissions/*.csv
+
+# Experiments & DBs
+experiments/*.csv
 *.db
-optuna_study*
+*.sqlite
+*.sqlite3
 
-# Scratch & Local State
-scratch/
-kernel-metadata.json
-gateway_state.json
-fix_ensemble_final.py
-context_auditor.py
+# Models
+models/*.pkl
+models/*.txt
 
-# System & Tooling artifacts
-.DS_Store
-**/.DS_Store
-.aider*
-.agents/
-.qodo/
-.claudecodeignore
-.dockerignore
-.gcloudignore
-.geminiignore
-
-# Experiment archives
-experiments/archive/
+# Exceptions
+!submissions/.gitkeep
+!assets/images/
+!assets/images/*.png
