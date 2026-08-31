@@ -114,11 +114,18 @@ $$\min_{w} \sum_{i=1}^{N} \left( \log(1 + y_i) - \log\left(1 + \sum_{m=1}^{M} w_
 $$\text{subject to} \quad w_m \ge 0, \quad \sum_{m=1}^{M} w_m = 1.0$$
 
 ### 3. Distribution-Free Conformal Uncertainty Quantification
-By evaluating non-conformity residuals on held-out calibration folds:
-$$s_i = |\log(y_i) - \log(\hat{y}_i)|$$
-We compute the empirical quantile $\hat{q} = \text{Quantile}\left(s, \frac{\lceil (n+1)(1-\alpha) \rceil}{n}\right)$, constructing guaranteed valuation intervals:
-$$C(X_{n+1}) = \left[ \hat{y}_{n+1} \cdot e^{-\hat{q}}, \; \hat{y}_{n+1} \cdot e^{\hat{q}} \right]$$
 
+By evaluating non-conformity residuals on held-out calibration folds:
+
+$$s_i = |\log(y_i) - \log(\hat{y}_i)|$$
+
+We compute the empirical quantile:
+
+$$\hat{q} = \text{Quantile}\left(s, \frac{\lceil (n+1)(1-\alpha) \rceil}{n}\right)$$
+
+constructing guaranteed valuation intervals:
+
+$$C(X_{n+1}) = \left[ \hat{y}_{n+1} \cdot e^{-\hat{q}},\, \hat{y}_{n+1} \cdot e^{\hat{q}} \right]$$
 ---
 
 ## 📊 Empirical Benchmarks & Leaderboard Progression
