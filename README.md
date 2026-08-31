@@ -136,7 +136,7 @@ $$C(X_{n+1}) = \left[ \hat{y}_{n+1} \cdot e^{-\hat{q}},\, \hat{y}_{n+1} \cdot e^
 | **Phase 2: Log Transform & Outliers** | 5-Fold CV | 0.1148 | 0.1251 | ~1200 | `log1p(SalePrice)` target + $4000\text{ sq ft}$ outlier filtering |
 | **Phase 3: Optuna Hyperparameter Tuning** | 5-Fold CV | 0.1138 | 0.1220 | ~800 | Tuned CatBoost, LightGBM, and XGBoost with Early Stopping |
 | **Phase 4: 6-Model Stacking & Linear** | 5-Fold CV | 0.1090 | 0.1204 | ~450 | Blended GBDTs + LassoCV, ElasticNetCV & RidgeCV |
-| **Phase 5: Positive Stacking & Clip** | 5-Fold CV | 0.10908 | 0.11811 | 🏆 #139 (Top 2%) | Non-negative stacking + $[\$42,000, \$525,000]$ boundary clipping |
+| **Phase 5: Positive Stacking & Clip** | 5-Fold CV | 0.10908 | 0.11811 | 🏆 #139 (Top 2%) | Non-negative stacking + $ [\$42,000, \$525,000 ] $ boundary clipping |
 | **Phase 6: Small-Dataset Prep Engine** | 5-Fold CV | 0.10892 | 0.11898 | 🚀 Top 1% (~#120) | Ordinal quality mapping + neighborhood rank + SLSQP blend |
 | **Phase 7: Log-Space SLSQP & Conformal (Ours)**| **5-Fold CV** | **0.10842** | **0.11649** | 👑 **#67 / 3,354** | **Personal Best, Top 2% Globally + 95% Conformal Bounds** |
 
@@ -201,10 +201,9 @@ house/
 
 ## 🧪 Testing & Validation Rigor
 
-* **12/12 Automated Unit Tests**: Enforcing data pipeline invariants, zero-NaN generation, and leak-free spatial transforms.
-* **Domain Clamping**: Asserting that final predictions adhere strictly to historical Ames market bounds ($[\$42,000, \$525,000]$).
-* **Agentic MLOps Collaboration**: Architected, tuned, and refactored using Google Jules under continuous verification.
-
+- **12/12 Automated Unit Tests**: Enforcing data pipeline invariants, zero-NaN generation, and leak-free spatial transforms.
+- **Domain Clamping**: Asserting that final predictions adhere strictly to historical Ames market bounds (`[$42,000, $525,000]`).
+- **Agentic MLOps Collaboration**: Architected, tuned, and refactored using Google Jules under continuous verification.
 ---
 
 ## 🚀 Quickstart & Reproducibility
