@@ -10,11 +10,11 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.compose import TransformedTargetRegressor
-from sklearn.linear_model import ElasticNetCV, LassoCV
+from sklearn.linear_model import ElasticNetCV, LassoCV, RidgeCV
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import KFold
 from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import QuantileTransformer, RobustScaler
+from sklearn.preprocessing import RobustScaler
 
 # ============================================
 # CONFIGURATION
@@ -38,9 +38,6 @@ def main():
 
     # Load original raw train data to prevent target leakage in Neighborhood encoding
     raw_train = pd.read_csv("./data/train.csv")
-    raw_train = raw_train[
-        ~((raw_train["GrLivArea"] > 4000) & (raw_train["SalePrice"] < 200000))
-    ].reset_index(drop=True)
     raw_neighborhoods = raw_train["Neighborhood"]
 
     print(f"X_train shape: {X_train.shape}")
@@ -65,6 +62,11 @@ def main():
     alphas_lasso = np.logspace(-5, 1, 100)
     alphas_elasticnet = np.logspace(-5, 1, 100)
     l1_ratios = [0.1, 0.3, 0.5, 0.7, 0.8, 0.9, 0.95, 0.99]
+
+    oof_ridge = np.zeros(len(X_train))
+    test_preds_ridge = np.zeros(len(X_test))
+    alphas_ridge = np.logspace(-1, 2, 100)
+
 
     for fold, (train_idx, val_idx) in enumerate(kf.split(X_train)):
         print(f"  Fold {fold + 1}/{N_FOLDS}...")
@@ -96,6 +98,10 @@ def main():
         X_va["Neighborhood"] = (
             raw_neighborhoods.iloc[val_idx].map(neigh_map).fillna(13).astype(int)
         )
+        raw_test_neighborhoods = pd.read_csv("./data/test.csv")["Neighborhood"]
+        X_test_fold = X_test.copy()
+        X_test_fold["Neighborhood"] = raw_test_neighborhoods.map(neigh_map).fillna(13).astype(int)
+
 
         # 1. Lasso Pipeline with TransformedTargetRegressor
         base_lasso = make_pipeline(
@@ -106,11 +112,11 @@ def main():
         )
         model_lasso = TransformedTargetRegressor(
             regressor=base_lasso,
-            transformer=QuantileTransformer(n_quantiles=900, output_distribution='normal', random_state=42)
+            func=np.log1p, inverse_func=np.expm1
         )
         model_lasso.fit(X_tr, y_tr)
         oof_lasso[val_idx] = model_lasso.predict(X_va)
-        test_preds_lasso += model_lasso.predict(X_test) / N_FOLDS
+        test_preds_lasso += model_lasso.predict(X_test_fold) / N_FOLDS
 
         # 2. ElasticNet Pipeline with TransformedTargetRegressor
         base_elasticnet = make_pipeline(
@@ -125,23 +131,42 @@ def main():
         )
         model_elasticnet = TransformedTargetRegressor(
             regressor=base_elasticnet,
-            transformer=QuantileTransformer(n_quantiles=900, output_distribution='normal', random_state=42)
+            func=np.log1p, inverse_func=np.expm1
         )
         model_elasticnet.fit(X_tr, y_tr)
         oof_elasticnet[val_idx] = model_elasticnet.predict(X_va)
-        test_preds_elasticnet += model_elasticnet.predict(X_test) / N_FOLDS
+        test_preds_elasticnet += model_elasticnet.predict(X_test_fold) / N_FOLDS
+
+        # 3. Ridge Pipeline with TransformedTargetRegressor
+        base_ridge = make_pipeline(
+            RobustScaler(),
+            RidgeCV(
+                alphas=alphas_ridge, cv=5
+            ),
+        )
+        model_ridge = TransformedTargetRegressor(
+            regressor=base_ridge,
+            func=np.log1p, inverse_func=np.expm1
+        )
+        model_ridge.fit(X_tr, y_tr)
+        oof_ridge[val_idx] = model_ridge.predict(X_va)
+        test_preds_ridge += model_ridge.predict(X_test_fold) / N_FOLDS
+
 
     # ============================================
     # EVALUATE OOF SCORES
     # ============================================
     rmsle_lasso = np.sqrt(mean_squared_error(y_train_log, oof_lasso))
     rmsle_elasticnet = np.sqrt(mean_squared_error(y_train_log, oof_elasticnet))
+    rmsle_ridge = np.sqrt(mean_squared_error(y_train_log, oof_ridge))
+
 
     print("\n" + "-" * 40)
     print("LINEAR MODELS OOF RMSLE SCORES:")
     print("-" * 40)
     print(f"  Lasso OOF RMSLE:      {rmsle_lasso:.6f}")
     print(f"  ElasticNet OOF RMSLE: {rmsle_elasticnet:.6f}")
+    print(f"  Ridge OOF RMSLE:      {rmsle_ridge:.6f}")
 
     # ============================================
     # SAVE ARTIFACTS
@@ -152,6 +177,9 @@ def main():
     joblib.dump(oof_elasticnet, "./models/oof_elasticnet.pkl")
     joblib.dump(test_preds_lasso, "./models/test_preds_lasso.pkl")
     joblib.dump(test_preds_elasticnet, "./models/test_preds_elasticnet.pkl")
+    joblib.dump(oof_ridge, "./models/oof_ridge.pkl")
+    joblib.dump(test_preds_ridge, "./models/test_preds_ridge.pkl")
+
 
     print("\n✅ OOF and Test predictions saved successfully to ./models/")
 

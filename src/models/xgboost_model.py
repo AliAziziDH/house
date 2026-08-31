@@ -5,6 +5,7 @@ from src.models.base import RANDOM_STATE, run_cv_experiment
 DEFAULT_XGB_PARAMS = {
     "n_estimators": 500,
     "max_depth": 4,
+    "reg_lambda": 5.0,
     "learning_rate": 0.0256,
     "subsample": 0.70,
     "colsample_bytree": 0.67,

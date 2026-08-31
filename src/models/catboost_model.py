@@ -4,9 +4,9 @@ from src.models.base import RANDOM_STATE, run_cv_experiment
 
 DEFAULT_CAT_PARAMS = {
     "iterations": 1000,
-    "depth": 7,
+    "depth": 4,
     "learning_rate": 0.0394,
-    "l2_leaf_reg": 2.415,
+    "l2_leaf_reg": 5.0,
     "subsample": 0.938,
     "colsample_bylevel": 0.940,
     "random_seed": RANDOM_STATE,

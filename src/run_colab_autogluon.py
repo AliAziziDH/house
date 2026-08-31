@@ -28,6 +28,7 @@ except ImportError:
 
 # ── Step 2: Standard imports (autogluon now guaranteed to be present) ─────────
 import os
+
 import numpy as np
 import pandas as pd
 from autogluon.tabular import TabularPredictor  # safe to import after pip install

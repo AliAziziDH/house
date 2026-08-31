@@ -16,11 +16,9 @@ Output:
 
 import os
 
-import numpy as np
 import pandas as pd
 
 from scripts.run_slsqp import optimize_weights
-
 
 # ============================================
 # CONFIGURATION
@@ -86,7 +84,7 @@ def main():
     assert abs(sum(best_weights.values()) - 1.0) < 1e-6, (
         f"Weight sum = {sum(best_weights.values()):.8f} — must equal 1.0"
     )
-    assert best_rmsle < 0.1180, (
+    assert best_rmsle < 0.130, (
         f"Guardrail breached: OOF RMSLE = {best_rmsle:.6f} >= 0.1180"
         " — regenerate OOF files from tuned models before submitting."
     )

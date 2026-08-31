@@ -55,8 +55,9 @@ print(f"Skewness after Box-Cox: {pd.Series(y_transformed).skew():.4f}")
 def objective(trial):
     params = {
         "n_estimators": trial.suggest_int("n_estimators", 100, 1000, step=100),
-        "max_depth": trial.suggest_int("max_depth", 3, 10),
-        "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
+        "max_depth": trial.suggest_int("max_depth", 3, 5),
+        "reg_lambda": trial.suggest_float("reg_lambda", 3.0, 10.0),
+        "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.05, log=True),
         "subsample": trial.suggest_float("subsample", 0.6, 1.0),
         "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
         "min_child_weight": trial.suggest_int("min_child_weight", 1, 10),

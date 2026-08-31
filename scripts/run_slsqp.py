@@ -2,7 +2,7 @@
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
-from src.metrics import rmsle
+
 
 def optimize_weights(oof_predictions: pd.DataFrame, y_true: np.ndarray):
     """
@@ -17,7 +17,10 @@ def optimize_weights(oof_predictions: pd.DataFrame, y_true: np.ndarray):
         blend = np.zeros_like(y_true, dtype=float)
         for i, col in enumerate(models):
             blend += weights[i] * oof_predictions[col].values
-        return rmsle(y_true, blend)
+
+        log_y_true = np.log1p(y_true)
+        log_ensemble_pred = np.log1p(blend)
+        return np.sum((log_y_true - log_ensemble_pred) ** 2)
     
     # Constraints & Bounds
     constraints = ({'type': 'eq', 'fun': lambda w: 1.0 - np.sum(w)})
@@ -33,4 +36,4 @@ def optimize_weights(oof_predictions: pd.DataFrame, y_true: np.ndarray):
         options={'ftol': 1e-10, 'maxiter': 1000}
     )
     
-    return dict(zip(models, res.x)), res.fun
+    return dict(zip(models, res.x)), np.sqrt(res.fun / len(y_true))
