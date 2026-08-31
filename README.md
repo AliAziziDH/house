@@ -1,124 +1,65 @@
-# 🏆 Kaggle House Prices: Advanced Regression Techniques
-> **Top 2% Solution (Rank #139 in the World | Public LB RMSLE: 0.11811) & Small-Dataset Optimization Engine**
+# Decision Intelligence for Real Estate Valuation
 
-![AI Architecture Banner](docs/architecture_banner.png)
+## Executive Summary & Decision Intelligence Architecture
+This project reframes the classic Kaggle House Prices competition from a pure point-prediction exercise into a robust Decision Intelligence framework. Instead of simply generating a single expected price, we provide **distribution-free uncertainty quantification** using Inductive Conformal Prediction (ICP). This approach equips stakeholders with statistically guaranteed decision intervals, answering not just "What is the house worth?" but "What is the 95% confidence range of its true market value?"
 
-[![Kaggle Rank](https://img.shields.io/badge/Kaggle_Rank-139_in_World_(Top_2%25)-gold?style=for-the-badge&logo=kaggle)](https://www.kaggle.com/c/house-prices-advanced-regression-techniques)
-[![RMSLE Score](https://img.shields.io/badge/Public_LB_RMSLE-0.11811-brightgreen?style=for-the-badge)](https://www.kaggle.com/c/house-prices-advanced-regression-techniques)
-[![OOF RMSLE](https://img.shields.io/badge/10--Fold_OOF_RMSLE-0.10892-blue?style=for-the-badge)](https://github.com/AliAziziDH/house-prices-kaggle)
-[![Python Version](https://img.shields.io/badge/Python-3.12-blue?style=for-the-badge&logo=python)](https://python.org)
-[![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
+## Leak-Free Preprocessing & Spatial Encoding
+To prevent data leakage during cross-validation and ensembling, we implement rigorous localized preprocessing:
+*   **Leak-Free Target Encoding:** Neighborhoods are encoded based on local median prices derived *only* from the training folds, avoiding any contamination from the validation or test sets.
+*   **Robust Scaling & Missing Value Imputation:** Handled systematically without data snooping.
+*   **Categorical Encoding:** One-hot encoding combined with ordinal mapping for features with inherent quality rankings.
 
-An end-to-end, state-of-the-art machine learning solution and engineering post-mortem for the **Kaggle House Prices: Advanced Regression Techniques** competition. This repository contains the complete engineering journey, hard-earned lessons on small-dataset overfitting, ordinal target encodings, fast SLSQP non-negative matrix blending, automated Pytest test suites, and Ruff static code analysis.
+## Convex SLSQP Stacking Optimization
+Rather than relying on simple averaging or unbounded meta-models (which can suffer from the "Optimizer's Curse"), we formulate the ensemble blending as a constrained quadratic optimization problem:
+*   **Objective:** Minimize the Out-Of-Fold (OOF) Root Mean Squared Logarithmic Error (RMSLE).
+*   **Constraints:** Blending weights must be non-negative ($w_i \geq 0$) and sum to exactly 1 ($\sum w_i = 1$).
+*   **Solver:** Sequential Least Squares Programming (SLSQP).
 
----
+This prevents overfitting and optimally allocates trust among the base models (XGBoost, CatBoost, and Linear Models).
 
-## 📖 The Engineering Journey & Post-Mortem
+![SLSQP Weight Allocation](assets/images/slsqp_weight_allocation.png)
 
-### 1. The Challenge of Small Datasets (< 1,500 Rows)
-When competing on tabular datasets with small sample sizes (Ames Housing dataset contains only **1,460 training rows**), standard Big Data approaches fail. Through rigorous experimentation across 20+ submissions, we uncovered a fundamental principle:
+## Inductive Conformal Prediction (ICP)
+To provide actionable confidence intervals, we apply Inductive Conformal Prediction (ICP) on top of the ensemble predictions:
+*   We reserve a calibration set to measure the distribution of non-conformity scores (absolute log-residuals).
+*   By finding the $1 - \alpha$ quantile of these scores, we construct prediction intervals with **finite-sample coverage guarantees**.
+*   We condition the quantiles on the `Neighborhood` feature to provide localized uncertainty bounds (wider intervals for highly variable neighborhoods).
 
-> **"In Small Datasets, Data Preparation > Heavy Model Complexity."**
+![Conformal Prediction Intervals](assets/images/conformal_prediction_intervals.png)
 
-Complex 10-Fold Stacking Ensembles with 250+ One-Hot encoded features learn dataset noise rather than true signals, causing severe CV-to-Leaderboard divergence. Shifting 80% of our focus to **data cleaning, ordinal rank encodings, and high-regularization linear models** delivered massive score jumps.
+## Empirical Results & Benchmark Comparison
+The table below illustrates the performance improvements from individual models to the optimized SLSQP ensemble.
 
----
+| Model | OOF RMSLE |
+| :--- | :--- |
+| XGBoost | 0.1247 |
+| CatBoost | 0.1245 |
+| Linear (Lasso) | 0.1523 |
+| **SLSQP Ensemble** | **0.1228** |
+| Live Kaggle Leaderboard | 0.11811 (Phase 5 Peak) / Final In-Progress |
 
-## 💡 Key Hard-Earned Engineering Lessons
+![Residual Error Distribution](assets/images/residual_error_distribution.png)
 
-### 🧠 Lesson 1: Replacing One-Hot Noise with Ordinal Quality Encodings
-- **The Problem**: One-Hot Encoding ordinal quality features (`ExterQual`, `BsmtQual`, `KitchenQual`, etc.) generated over 250 sparse columns, creating high multicollinearity ($r > 0.90$) and degrading linear regression stability.
-- **The Solution**: Converted 10 categorical quality features into dense ordinal integers (`Ex=5, Gd=4, TA=3, Fa=2, Po=1, None=0`). This provided strong, compact linear signals to LassoCV and Ridge models.
+## Quickstart & Reproducibility
 
-### 📊 Lesson 2: Neighborhood Target Rank Mapping
-- **The Insight**: `Neighborhood` is the single most predictive feature for housing valuation. Instead of creating 25 sparse dummy variables, we mapped neighborhoods to ordinal ranks (1 to 25) based on the **median SalePrice per square foot** in the training set.
-
-### ⚡ Lesson 3: 0.1-Second Vectorized SLSQP Weight Optimization
-- **The Optimization**: Instead of running 100,000 slow single-threaded Python `for` loops to optimize ensemble weights, we implemented a vectorized Non-Negative Least Squares (SLSQP) matrix optimizer using `scipy.optimize.minimize`. This reduced optimization time from **5 minutes down to 0.1 seconds**.
-
-### 📈 Lesson 4: Score Gradient Tracking ($\frac{\Delta \text{LB}}{\Delta \text{CV}}$)
-- **The Methodology**: We tracked the direction of progress across every submission by computing the ratio of Public Leaderboard score delta to Local CV score delta. If $\Delta \text{CV} > 0$ but $\Delta \text{LB} < 0$, the system automatically detected overfitting and reverted to higher regularization.
-
----
-
-## 📌 Performance Progression Across Phases
-
-| Phase / Strategy Milestone | 10-Fold OOF RMSLE | Kaggle Public LB RMSLE | Global Rank | Key Highlights & Architectural Changes |
-| :--- | :---: | :---: | :---: | :--- |
-| **Phase 1: Baseline Models** | `0.1420` | `0.1450` | ~2500+ | Raw features + default XGBoost baseline |
-| **Phase 2: Log Transform & Outliers** | `0.1148` | `0.1251` | ~1200 | `log1p(SalePrice)` target + GrLivArea > 4000 sq ft filtering |
-| **Phase 3: Optuna Hyperparameter Tuning** | `0.1138` | `0.1220` | ~800 | Tuned CatBoost, LightGBM, and XGBoost with Early Stopping |
-| **Phase 4: 6-Model Stacking & Linear Integration**| `0.1090` | `0.1204` | ~450 | Blended GBDTs + LassoCV, ElasticNetCV & Ridge |
-| **Phase 5: Positive Stacking & Boundary Clip** | `0.10908` | **`0.11811`** | 🏆 **#139 (Top 2%)** | Non-negative Stacking + `[$42,000, $525,000]` boundary clipping |
-| **Phase 6: Small-Dataset Preparation Engine** | **`0.10892`** | **`0.11898`** | 🚀 **Top 1% Pipeline** | Ordinal Quality Mapping + Neighborhood Rank + SLSQP Weight Blending |
-
----
-
-## 🏗️ System Architecture
-
-```mermaid
-flowchart TD
-    A[Raw Kaggle Dataset\n1460 Train / 1459 Test] --> B[Outlier Removal\nGrLivArea > 4000 sq ft]
-    B --> C[Ordinal Quality Encoding\nEx=5, Gd=4, TA=3, Fa=2, Po=1, None=0]
-    C --> D[Neighborhood Target Rank Mapping\nMedian SalePrice Ranking 1 to 25]
-    D --> E[Domain Interactions & Age Metrics\nQuality_SF_Score, House_Age, Remod_Age]
-    E --> F[Skewness Correction\nLog1p Transformation for Skew > 0.75]
-    
-    F --> G1[LassoCV Regressor\nHigh Alpha Regularization]
-    F --> G2[RidgeCV Regressor\nMulticollinearity Control]
-    F --> G3[ElasticNetCV Regressor\nL1/L2 Combination]
-    F --> G4[CatBoost Regressor\nLow Depth 4]
-    
-    G1 & G2 & G3 & G4 --> H[SLSQP Non-Negative Weight Optimization\n0.1s Matrix Blending]
-    H --> I[Quantile Price Boundary Clipping\nInterval: $42,000 to $525,000]
-    I --> J[Final Calibrated Submission\nsubmission.csv]
-```
-
----
-
-## 📂 Repository Structure
-
-```text
-house-prices-kaggle/
-├── docs/
-│   └── architecture_banner.png          # High-resolution AI system banner
-├── src/
-│   ├── preprocess.py                    # Small-dataset ordinal encoding & skewness pipeline
-│   ├── find_ensemble_weights.py         # 0.1s SLSQP non-negative weight optimizer
-│   ├── train_catboost.py                # CatBoost regressor with high regularization
-│   ├── train_linear_models.py           # LassoCV, RidgeCV, ElasticNetCV pipelines
-│   ├── ensemble.py                      # Multi-model prediction blending
-│   └── diagnose_pipeline.py            # Diagnostic correlation & MAPE auditor
-├── tests/
-│   └── test_house_prices.py             # Automated Pytest unit test suite
-├── house_prices_top1percent_pipeline.ipynb # Complete 10-Fold Kaggle notebook
-├── kernel-metadata.json                 # Kaggle Code Competition metadata
-├── requirements.txt                     # Project dependencies
-└── README.md                            # Comprehensive documentation & post-mortem
-```
-
----
-
-## ⚙️ Quickstart & Automated Testing
-
-### 1. Installation with `uv`
+### Environment Setup
 ```bash
-git clone https://github.com/AliAziziDH/house-prices-kaggle.git
-cd house-prices-kaggle
-uv pip install -r requirements.txt
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
-### 2. Run Automated Pytest Suite
+### Full Pipeline Execution
 ```bash
-PYTHONPATH=. python3 -m pytest tests/ -v
+# 1. Preprocess Data
+python3 src/preprocess.py
+
+# 2. Train Base Models
+python3 src/train.py
+
+# 3. Optimize Ensemble Weights
+python3 src/find_ensemble_weights.py
+
+# 4. Generate Final Predictions & Intervals
+python3 src/ensemble_oof.py
 ```
-
-### 3. Run Static Code Audit with Ruff
-```bash
-python3 -m ruff check src/
-```
-
----
-
-## 📜 License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
