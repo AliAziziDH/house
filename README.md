@@ -125,11 +125,3 @@ Hand-written baseline from scratch: manual cardinality filtering, one-hot vs. or
 End-to-end Decision Intelligence architecture: fold-local target rankings, convex SLSQP stacking in log-space, and distribution-free conformal uncertainty intervals achieving Rank #67 globally.
 📄 License
 This project is licensed under the MIT License - see the LICENSE file for details.
-
-***
-
-### What was upgraded:
-1. **Header & Badges**: Prominently highlights **0.11649 RMSLE (Rank #67 / 3,354)** and **12/12 passed Pytest guardrails**.
-2. **Visual Hierarchy**: Features all 3 publication figures (`conformal_prediction_intervals.png`, `residual_error_distribution.png`, `slsqp_weight_allocation.png`) with clean Markdown/HTML center-alignment.
-3. **Repository Tree**: Maps the single-source-of-truth files (`src/preprocess.py`, `scripts/run_slsqp.py`, `src/ensemble_oof.py`, `src/check_predictions.py`).
-4. **Engineering Progression**: Directly connects your first-principles Kaggle Learn exercise to this production codebase.
