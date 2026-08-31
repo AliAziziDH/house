@@ -1,8 +1,3 @@
-import os
-
-import joblib
-import pandas as pd
-
 # ============================================
 # LOAD MODELS AND DATA
 # ============================================
@@ -10,12 +5,40 @@ print("=" * 60)
 print("LOADING MODELS AND DATA")
 print("=" * 60)
 
-# Load test data
+import os
+
+import joblib
 import numpy as np
+import pandas as pd
+
+# Best weights from optimization (aligned with README)
+# Fallback hardcoded weights
+weight_catboost = 0.516
+weight_xgb = 0.484
+weight_lgb = 0.0
+weight_ridge = 0.0
+weight_lasso = 0.0
+weight_elasticnet = 0.0
+
+try:
+    weights_df = pd.read_csv("./experiments/slsqp_weights.csv")
+    w = dict(zip(weights_df["model"], weights_df["weight"]))
+    weight_xgb = w.get("XGBoost", 0.0)
+    weight_catboost = w.get("CatBoost", 0.0)
+    weight_lasso = w.get("Linear", 0.0)
+except Exception as e:  # noqa: BLE001
+    print(f"Warning: Could not load weights: {e}")
+
+
+# Load test data
 
 X_test = pd.read_csv("./processed_data/X_test.csv")
-X_test_raw = pd.read_csv("./processed_data/X_test_raw.csv")
+X_test_raw = pd.read_csv("./processed_data/X_test_raw_clean.csv")
 test_ids = pd.read_csv("./data/test.csv")["Id"]
+
+cat_features = pd.read_csv("./processed_data/X_train_raw.csv").select_dtypes(include=["object", "category"]).columns.tolist()
+for col in cat_features:
+    X_test_raw[col] = X_test_raw[col].fillna("Missing").astype(str)
 
 raw_train = pd.read_csv("./data/train.csv")
 raw_train = raw_train[
@@ -32,7 +55,6 @@ neigh_order = (
 )
 neigh_map = {n: i + 1 for i, n in enumerate(neigh_order)}
 
-X_test["Neighborhood"] = raw_test_neighborhoods.map(neigh_map).fillna(13).astype(int)
 X_test_raw["Neighborhood"] = raw_test_neighborhoods.map(neigh_map).fillna(13).astype(int)
 
 # Load trained models (we only use the best ones)
@@ -59,9 +81,12 @@ print("=" * 60)
 xgb_pred_transformed = xgb_model.predict(X_test)
 catboost_pred_transformed = catboost_model.predict(X_test_raw)
 
+# Load the transformer (Box-Cox)
+pt = joblib.load("./models/boxcox_transformer.pkl")
+
 # Inverse transform to original scale (dollars)
-xgb_pred_original = np.expm1(xgb_pred_transformed)
-catboost_pred_original = np.expm1(catboost_pred_transformed)
+xgb_pred_original = pt.inverse_transform(xgb_pred_transformed.reshape(-1, 1)).flatten()
+catboost_pred_original = pt.inverse_transform(catboost_pred_transformed.reshape(-1, 1)).flatten()
 
 print("✅ Predictions generated for both models.")
 
@@ -72,32 +97,23 @@ print("\n" + "=" * 60)
 print("ENSEMBLE: WEIGHTED AVERAGE")
 print("=" * 60)
 
-# Best weights from optimization (aligned with README)
-weight_catboost = 0.1667
-weight_xgb = 0.1667
-weight_lgb = 0.1667
-weight_ridge = 0.1667
-weight_lasso = 0.1667
-weight_elasticnet = 0.1667
+
 
 # Calculate weighted average
-try:
-    ensemble_pred = (
-        weight_xgb * xgb_pred_original +
-        weight_catboost * catboost_pred_original +
-        weight_lgb * lgb_pred_original +
-        weight_ridge * ridge_pred_original +
-        weight_lasso * lasso_pred_original +
-        weight_elasticnet * elasticnet_pred_original
-    )
-except NameError:
-    # Normalize weights to sum to 1.0
-    total = weight_xgb + weight_catboost
-    ensemble_pred = (
-        (weight_xgb / total) * xgb_pred_original + (weight_catboost / total) * catboost_pred_original
-    )
+total = weight_xgb + weight_catboost
+if total > 0:
+    weight_xgb /= total
+    weight_catboost /= total
+else:
+    weight_xgb = 0.5
+    weight_catboost = 0.5
 
-ensemble_pred = np.clip(ensemble_pred, 34900, 755000)
+ensemble_pred = (
+    weight_xgb * xgb_pred_original +
+    weight_catboost * catboost_pred_original
+)
+
+ensemble_pred = np.clip(ensemble_pred, 42000, 525000)
 
 print(f"Weights: XGBoost = {weight_xgb:.2f}, CatBoost = {weight_catboost:.2f}")
 
@@ -114,8 +130,6 @@ X_train = pd.read_csv("./processed_data/X_train.csv")
 X_train_raw = pd.read_csv("./processed_data/X_train_raw.csv")
 y_train_log = pd.read_csv("./processed_data/y_train_log.csv").squeeze()
 
-X_train["Neighborhood"] = raw_train["Neighborhood"].map(neigh_map).fillna(13).astype(int)
-X_train_raw["Neighborhood"] = raw_train["Neighborhood"].map(neigh_map).fillna(13).astype(int)
 
 # Recreate 10% calibration set split
 _, X_cal, _, y_cal_log = train_test_split(
@@ -125,31 +139,40 @@ _, X_cal_raw, _, _ = train_test_split(
     X_train_raw, y_train_log, test_size=0.1, random_state=42
 )
 
+for col in cat_features:
+    X_cal_raw[col] = X_cal_raw[col].fillna("Missing").astype(str)
+
+
+
 # Generate ensemble predictions on calibration set
 xgb_cal_transformed = xgb_model.predict(X_cal)
 catboost_cal_transformed = catboost_model.predict(X_cal_raw)
 try:
     lgb_cal_transformed = lgb_model.predict(X_cal)
-except Exception: # noqa: BLE001
+except Exception as e:  # noqa: BLE001
+    print(f"Warning: Could not load weights: {e}")
     lgb_cal_transformed = np.zeros(len(X_cal))
 
 # Load OOF predictions directly from models directory for linear models since they are already saved
 try:
     oof_ridge = __import__("joblib").load("./models/oof_ridge.pkl")
     ridge_cal_transformed = oof_ridge[-len(X_cal):] # Approximation for calibration split
-except Exception: # noqa: BLE001
+except Exception as e:  # noqa: BLE001
+    print(f"Warning: Could not load weights: {e}")
     ridge_cal_transformed = np.zeros(len(X_cal))
 
 try:
     oof_lasso = __import__("joblib").load("./models/oof_lasso.pkl")
     lasso_cal_transformed = oof_lasso[-len(X_cal):]
-except Exception: # noqa: BLE001
+except Exception as e:  # noqa: BLE001
+    print(f"Warning: Could not load weights: {e}")
     lasso_cal_transformed = np.zeros(len(X_cal))
 
 try:
     oof_elasticnet = __import__("joblib").load("./models/oof_elasticnet.pkl")
     elasticnet_cal_transformed = oof_elasticnet[-len(X_cal):]
-except Exception: # noqa: BLE001
+except Exception as e:  # noqa: BLE001
+    print(f"Warning: Could not load weights: {e}")
     elasticnet_cal_transformed = np.zeros(len(X_cal))
 
 ensemble_cal_log = (
